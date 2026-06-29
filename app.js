@@ -318,8 +318,9 @@ function startLogin() {
   if (!CFG.GOOGLE_CLIENT_ID) { showLoginErr('尚未設定 GOOGLE_CLIENT_ID(請編輯 config.js)'); return; }
   (function init() {
     if (!(window.google && google.accounts && google.accounts.id)) return setTimeout(init, 200);
-    google.accounts.id.initialize({ client_id: CFG.GOOGLE_CLIENT_ID, callback: onCredential });
+    google.accounts.id.initialize({ client_id: CFG.GOOGLE_CLIENT_ID, callback: onCredential, auto_select: true });
     google.accounts.id.renderButton($('#gbtn'), { theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'rectangular' });
+    try { google.accounts.id.prompt(); } catch (e) {}
   })();
 }
 function showLoginErr(msg) { const e = $('#login-err'); if (e) { e.hidden = false; e.textContent = msg; } }
@@ -327,6 +328,7 @@ async function onCredential(resp) {
   ID_TOKEN = resp.credential;
   try {
     await apiPost('me', {});               // 後端驗證 token + email 白名單
+    try { localStorage.setItem('idt', ID_TOKEN); } catch (e) {}
     $('#login-gate').hidden = true;
     showHome();
   } catch (e) {
@@ -336,5 +338,14 @@ async function onCredential(resp) {
 }
 
 // ---------- 啟動 ----------
-if (DEV) showHome();
-else startLogin();
+async function boot() {
+  if (DEV) { showHome(); return; }
+  const saved = (function(){ try { return localStorage.getItem('idt'); } catch (e) { return null; } })();
+  if (saved) {
+    ID_TOKEN = saved;
+    try { await apiPost('me', {}); const g = $('#login-gate'); if (g) g.hidden = true; showHome(); return; }
+    catch (e) { ID_TOKEN = null; try { localStorage.removeItem('idt'); } catch (e2) {} }
+  }
+  startLogin();
+}
+boot();
