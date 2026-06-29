@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Trippin · 行程規劃</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="styles.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="config.js"></script>
+<script src="data.js"></script>
+</head>
+<body>
+<div id="login-gate" class="login-gate" hidden>
+  <div class="login-card">
+    <div class="login-logo">▶ TRIPPIN</div>
+    <p>請用獲授權的 Google 帳號登入</p>
+    <div id="gbtn"></div>
+    <p id="login-err" class="login-err" hidden></p>
+  </div>
+</div>
+<header class="topbar">
+  <div class="brand" id="home-link"><span class="logo">▶</span> TRIPPIN</div>
+  <div class="user"><span id="env-badge" class="badge" hidden>DEMO</span></div>
+</header>
+
+<main class="wrap">
+  <!-- 首頁 -->
+  <section id="home-view">
+    <div class="hero" id="hero">
+      <img class="hero-img" id="hero-img" alt=""/>
+      <div class="hero-txt">
+        <h1>規劃你的旅程</h1>
+        <p>給自己人共用的行程規劃 ・ 點開任一顆旅程看內容或編輯</p>
+      </div>
+    </div>
+
+    <h2 class="sect-h">★ 你的旅程</h2>
+    <div class="trail"><div id="passes" class="bubbles"></div></div>
+    <p id="add-help" class="add-help" hidden></p>
+  </section>
+
+  <!-- 行程內容 -->
+  <section id="trip-view" hidden>
+    <button class="back" id="back">◀ 回所有旅程</button>
+    <div id="trip-head" class="trip-head"></div>
+    <div id="tripmap" class="tripmap"></div>
+    <nav id="sectionnav" class="tabnav"></nav>
+    <div class="toolbar">
+      <div class="seg">
+        <button id="mode-view" class="seg-btn active">檢視</button>
+        <button id="mode-edit" class="seg-btn">編輯</button>
+      </div>
+      <div id="edit-actions" class="edit-actions" hidden>
+        <span id="save-status" class="muted small"></span>
+        <button id="add-row" class="btn-ghost">＋ 新增列</button>
+        <button id="save-btn" class="btn">儲存</button>
+      </div>
+    </div>
+    <div id="content" class="content"></div>
+  </section>
+</main>
+
+<button id="to-top" class="to-top" aria-label="回到頂端" hidden>▲</button>
+
+<script src="app.js"></script>
+</body>
+</html>
