@@ -75,7 +75,7 @@ function devClone(id) {
 function devPersist() { if (DEV && TRIP) LS.setItem('demo:' + TRIP.id, JSON.stringify(TRIP)); }
 async function loadTrip(meta) {
   if (DEV) return devClone(meta.id) || meta;
-  const key = 'tcache:' + meta.spreadsheetId;
+  const key = 'tcache2:' + meta.spreadsheetId;
   const fetchFresh = (async () => {
     const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'dump', spreadsheetId: meta.spreadsheetId, idToken: ID_TOKEN }) });
@@ -93,7 +93,7 @@ async function saveSheetRemote(name, sheet) {
     body: JSON.stringify({ action: 'saveSheet', spreadsheetId: TRIP.spreadsheetId, idToken: ID_TOKEN, sheetName: name, headers: sheet.headers, rows: sheet.rows }) });
   const d = await res.json(); if (!d.ok) throw new Error(d.error || '儲存失敗');
   TRIP.sheets[name] = sheet;
-  try { localStorage.setItem('tcache:' + TRIP.spreadsheetId, JSON.stringify(TRIP.sheets)); } catch (e) {}
+  try { localStorage.setItem('tcache2:' + TRIP.spreadsheetId, JSON.stringify(TRIP.sheets)); } catch (e) {}
 }
 
 // ---------- 首頁(波浪小徑 + 腳印)----------
