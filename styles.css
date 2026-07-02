@@ -129,8 +129,13 @@ table.grid input:focus,table.grid textarea:focus{outline:3px solid var(--gold);o
 .colbtns{display:flex;gap:8px;margin:12px 0 0}
 
 /* 至頂 */
-.to-top{position:fixed;right:18px;bottom:18px;width:46px;height:46px;font-family:var(--px);font-size:14px;border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);background:var(--green);color:#fff;cursor:pointer;z-index:60}
-.to-top:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--shadow)}
+.to-top{position:fixed;right:18px;bottom:18px;width:60px;padding:0;display:flex;flex-direction:column;align-items:center;gap:2px;font-family:var(--px);font-size:14px;border:0;background:none;color:var(--green-d);cursor:pointer;z-index:60}
+.to-top-anim{display:block;width:52px;height:52px;pointer-events:none;filter:drop-shadow(2px 2px 0 var(--shadow))}
+.to-top-anim svg{display:block}
+.to-top-label{display:flex;align-items:center;gap:3px;font-size:10px;letter-spacing:1px;line-height:1;text-shadow:1px 1px 0 #fff}
+.to-top-label .arr{font-size:9px;font-family:var(--cjk);animation:toTopFloat 1.4s ease-in-out infinite}
+@keyframes toTopFloat{0%,100%{transform:translateY(1px)}50%{transform:translateY(-3px)}}
+.to-top:active{transform:translate(2px,2px)}
 
 /* 過場:綠底 + 白色大飛機 + 雲 */
 .fly2{position:fixed;inset:0;z-index:1000;background:#13a594;overflow:hidden;transition:clip-path .55s steps(8);will-change:clip-path,transform;pointer-events:none}

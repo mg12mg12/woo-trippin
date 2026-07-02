@@ -50,6 +50,13 @@ if (DEV) $('#env-badge').hidden = false;
 const toTop = $('#to-top');
 window.addEventListener('scroll', () => { toTop.hidden = window.scrollY < 300; });
 toTop.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+if (window.lottie && window.TOTOP_ANIM) {
+  lottie.loadAnimation({
+    container: $('#to-top-anim'),
+    renderer: 'svg', loop: true, autoplay: true,
+    animationData: window.TOTOP_ANIM,
+  });
+}
 
 // 依目前季節自動選首頁背景(北半球;3-5 春 6-8 夏 9-11 秋 其餘 冬)
 (function () {

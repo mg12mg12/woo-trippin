@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="styles.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
 <script src="data.js"></script>
@@ -36,7 +37,7 @@
       <img class="hero-img" id="hero-img" alt=""/>
       <div class="hero-txt">
         <h1>規劃你的旅程</h1>
-        <p>給自己人共用的行程規劃 ・ 點開任一顆旅程看內容或編輯</p>
+        <p>想加甚麼項目，就加甚麼項目，我試算表大哥說他都能做( • ̀ω•́ )</p>
       </div>
     </div>
 
@@ -66,8 +67,12 @@
   </section>
 </main>
 
-<button id="to-top" class="to-top" aria-label="回到頂端" hidden>▲</button>
+<button id="to-top" class="to-top" aria-label="回到頂端" hidden>
+  <span id="to-top-anim" class="to-top-anim" aria-hidden="true"></span>
+  <span class="to-top-label"><span class="arr">▲</span>top</span>
+</button>
 
+<script src="totop-anim.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
