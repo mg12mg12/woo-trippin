@@ -75,10 +75,17 @@ function devClone(id) {
 function devPersist() { if (DEV && TRIP) LS.setItem('demo:' + TRIP.id, JSON.stringify(TRIP)); }
 async function loadTrip(meta) {
   if (DEV) return devClone(meta.id) || meta;
-  const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'dump', spreadsheetId: meta.spreadsheetId, idToken: ID_TOKEN }) });
-  const d = await res.json(); if (!d.ok) throw new Error(d.error || '讀取失敗');
-  return Object.assign({}, meta, { sheets: d.data.sheets });
+  const key = 'tcache:' + meta.spreadsheetId;
+  const fetchFresh = (async () => {
+    const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'dump', spreadsheetId: meta.spreadsheetId, idToken: ID_TOKEN }) });
+    const d = await res.json(); if (!d.ok) throw new Error(d.error || '讀取失敗');
+    try { localStorage.setItem(key, JSON.stringify(d.data.sheets)); } catch (e) {}
+    return d.data.sheets;
+  })();
+  let cached = null; try { const s = localStorage.getItem(key); if (s) cached = JSON.parse(s); } catch (e) {}
+  if (cached) { fetchFresh.catch(() => {}); return Object.assign({}, meta, { sheets: cached }); }
+  return Object.assign({}, meta, { sheets: await fetchFresh });
 }
 async function saveSheetRemote(name, sheet) {
   if (DEV) { TRIP.sheets[name] = sheet; devPersist(); return; }
@@ -86,6 +93,7 @@ async function saveSheetRemote(name, sheet) {
     body: JSON.stringify({ action: 'saveSheet', spreadsheetId: TRIP.spreadsheetId, idToken: ID_TOKEN, sheetName: name, headers: sheet.headers, rows: sheet.rows }) });
   const d = await res.json(); if (!d.ok) throw new Error(d.error || '儲存失敗');
   TRIP.sheets[name] = sheet;
+  try { localStorage.setItem('tcache:' + TRIP.spreadsheetId, JSON.stringify(TRIP.sheets)); } catch (e) {}
 }
 
 // ---------- 首頁(波浪小徑 + 腳印)----------
@@ -116,12 +124,12 @@ function showHome() {
 }
 
 // ---------- 點擊放大轉場 ----------
-function flyToTrip(bubbleEl, id, theme) {
+async function flyToTrip(bubbleEl, id, theme) {
   if (!guardDirty()) return;
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
   const orb = bubbleEl.querySelector('.orb');
   const r = orb ? orb.getBoundingClientRect() : { width: 0 };
-  if (reduce || !r.width) { openTrip(id); window.scrollTo(0, 0); return; }
+  if (reduce || !r.width) { await openTrip(id); window.scrollTo(0, 0); return; }
   const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
   const ov = document.createElement('div'); ov.className = 'fly2';
   const cp0 = `circle(0px at ${cx}px ${cy}px)`;
@@ -130,13 +138,20 @@ function flyToTrip(bubbleEl, id, theme) {
     <span class="cloud" style="top:24%;right:11%;font-size:92px;color:#e7eef0">☁</span>
     <span class="cloud" style="bottom:16%;left:16%;font-size:56px;color:#e7eef0">☁</span>
     <span class="cloud" style="bottom:28%;right:18%;font-size:70px">☁</span>
-    <span class="plane">✈</span>`;
+    <span class="plane">✈</span><span class="fly-load">讀取中…</span>`;
   document.body.appendChild(ov);
   const R = Math.hypot(innerWidth, innerHeight);
   requestAnimationFrame(() => { const cp = `circle(${R}px at ${cx}px ${cy}px)`; ov.style.clipPath = cp; ov.style.webkitClipPath = cp; });
-  setTimeout(() => { openTrip(id); window.scrollTo(0, 0); }, 1360);
-  setTimeout(() => { ov.style.transition = 'transform .55s ease-in, opacity .5s'; ov.style.transform = 'translateY(-110%)'; ov.style.opacity = '0'; }, 1620);
-  setTimeout(() => ov.remove(), 2220);
+  window.scrollTo(0, 0);
+  const started = Date.now();
+  const loadTimer = setTimeout(() => { const l = ov.querySelector('.fly-load'); if (l) l.style.opacity = '1'; }, 1700);
+  try { await openTrip(id); } catch (e) {}
+  clearTimeout(loadTimer);
+  const minMs = 1500, elapsed = Date.now() - started;
+  if (elapsed < minMs) await new Promise(res => setTimeout(res, minMs - elapsed));
+  ov.style.transition = 'transform .55s ease-in, opacity .5s';
+  ov.style.transform = 'translateY(-110%)'; ov.style.opacity = '0';
+  setTimeout(() => ov.remove(), 600);
 }
 
 $('#home-link').onclick = () => { if (guardDirty()) showHome(); };
