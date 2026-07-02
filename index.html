@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="styles.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="config.js"></script>
 <script src="data.js"></script>
@@ -50,7 +51,7 @@
     <div id="trip-head" class="trip-head"></div>
     <div id="tripmap" class="tripmap"></div>
     <nav id="sectionnav" class="tabnav"></nav>
-    <div class="toolbar">
+    <div class="toolbar" id="toolbar">
       <div class="seg">
         <button id="mode-view" class="seg-btn active">檢視</button>
         <button id="mode-edit" class="seg-btn">編輯</button>

@@ -153,13 +153,20 @@ async function openTrip(id) {
     <span class="tm">${esc(TRIP.dateRange || '')} · ${esc(TRIP.days || '')} 天</span>`;
   renderMap();
   const names = Object.keys(TRIP.sheets || {});
-  $('#sectionnav').innerHTML = names.map((n, i) =>
+  let tabsHtml = names.map((n, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" data-s="${esc(n)}"><span class="ic">${ICONS[n] || '•'}</span><span class="lab">${esc(n)}</span></button>`).join('');
+  tabsHtml += `<button class="tab" data-s="__exp__"><span class="ic">💵</span><span class="lab">支出</span></button>`;
+  $('#sectionnav').innerHTML = tabsHtml;
   $('#sectionnav').querySelectorAll('.tab').forEach(t => t.onclick = () => selectSheet(t.dataset.s));
-  curSheet = names[0]; setActiveTab(curSheet); setMode('view');
+  curSheet = names[0]; setActiveTab(curSheet); $('#toolbar').hidden = false; setMode('view');
 }
 function setActiveTab(name) { $('#sectionnav').querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.s === name)); }
-function selectSheet(name) { if (!guardDirty()) return; curSheet = name; setActiveTab(name); setMode('view'); }
+function selectSheet(name) {
+  if (!guardDirty()) return;
+  curSheet = name; setActiveTab(name);
+  if (name === '__exp__') { $('#toolbar').hidden = true; renderExpenses(); }
+  else { $('#toolbar').hidden = false; setMode('view'); }
+}
 
 // ---------- 真實地圖(Leaflet)----------
 function mapPoints() {
@@ -223,6 +230,105 @@ function setMode(m) {
 }
 
 // ---------- 檢視 ----------
+// ---------- 支出頁 ----------
+const EXP_CATS = ['餐飲', '交通', '住宿', '購物', '門票/娛樂', '體驗', '其他'];
+const EXP_COLORS = ['#ff7a5c', '#5aa0d8', '#8b7cf6', '#f6cf63', '#e0728a', '#46c5a1', '#9aa6a0'];
+let EXP = [];
+let EXPCHART = null;
+
+function getDefaultRate() {
+  const sh = TRIP && TRIP.sheets && TRIP.sheets['匯率'];
+  if (!sh) return 1;
+  const j = sh.headers.indexOf('數值'); const col = j === -1 ? 1 : j;
+  for (const r of sh.rows) { const v = parseFloat(r[col]); if (!isNaN(v) && v > 0) return v; }
+  return 1;
+}
+async function loadExpenses() {
+  if (DEV) { try { return JSON.parse(localStorage.getItem('exp:' + TRIP.id)) || []; } catch (e) { return []; } }
+  const d = await apiPost('expenses', { spreadsheetId: TRIP.spreadsheetId }); return d.items || [];
+}
+async function persistExpenses() {
+  if (DEV) { localStorage.setItem('exp:' + TRIP.id, JSON.stringify(EXP)); return; }
+  await apiPost('saveExpenses', { spreadsheetId: TRIP.spreadsheetId, items: EXP });
+}
+const twdOf = (e) => Math.round((Number(e.amount) || 0) * (Number(e.qty) || 1) * (Number(e.rate) || 0));
+const totOf = (e) => (Number(e.amount) || 0) * (Number(e.qty) || 1);
+
+async function renderExpenses() {
+  const rate0 = getDefaultRate();
+  try { EXP = await loadExpenses(); } catch (e) { $('#content').innerHTML = '<p class="muted">讀取支出失敗:' + esc(e.message) + '</p>'; return; }
+  drawExpenses(rate0);
+}
+function drawExpenses(rate0) {
+  const sorted = EXP.map((e, i) => ({ e, i })).sort((a, b) => twdOf(b.e) - twdOf(a.e));
+  const totalTwd = EXP.reduce((s, e) => s + twdOf(e), 0);
+  const catSum = {}; EXP_CATS.forEach(c => catSum[c] = 0);
+  EXP.forEach(e => { const c = EXP_CATS.indexOf(e.category) === -1 ? '其他' : e.category; catSum[c] += twdOf(e); });
+  const catList = EXP_CATS.map(c => ({ c, v: catSum[c] })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  const catRows = catList.map(x => { const pct = totalTwd ? Math.round(x.v / totalTwd * 100) : 0; const col = EXP_COLORS[EXP_CATS.indexOf(x.c)];
+    return `<div class="expcat-row"><span class="cdot" style="background:${col}"></span><span class="cnm">${x.c}</span><span class="camt">NT$${x.v.toLocaleString()}</span><span class="cpct">${pct}%</span></div>`; }).join('');
+  const opts = EXP_CATS.map(c => `<option value="${c}">${c}</option>`).join('');
+  const rows = sorted.map(({ e, i }) => `
+    <tr>
+      <td>${esc(e.name)}</td>
+      <td><span class="ecat">${esc(e.category || '其他')}</span></td>
+      <td class="num">${e.qty || 1}</td>
+      <td class="num">${(Number(e.amount) || 0).toLocaleString()}</td>
+      <td class="num">${totOf(e).toLocaleString()}</td>
+      <td class="num">NT$${twdOf(e).toLocaleString()}</td>
+      <td class="rowdel"><button data-del="${i}" title="刪除">✕</button></td>
+    </tr>`).join('');
+  $('#content').innerHTML = `
+    <div class="section-title">💵 支出 <span class="muted small">(只有你自己看得到)</span></div>
+    <div class="expform">
+      <input id="e-name" placeholder="商品名稱"/>
+      <select id="e-cat">${opts}</select>
+      <input id="e-qty" type="number" min="1" placeholder="數量(預設1)" inputmode="numeric"/>
+      <input id="e-amt" type="number" min="0" placeholder="金額(單價)" inputmode="decimal"/>
+      <input id="e-rate" type="number" step="0.0001" value="${rate0}" title="匯率"/>
+      <button id="e-add" class="btn">＋ 新增</button>
+    </div>
+    <div class="exptotal">台幣總計 <b>NT$${totalTwd.toLocaleString()}</b></div>
+    <div class="expchart-wrap">${EXP.length ? '<canvas id="expchart"></canvas>' : '<p class="muted" style="padding:16px">還沒有支出,先在上面新增一筆。</p>'}</div>
+    ${EXP.length ? `<div class="expcats">${catRows}</div>` : ''}
+    <div class="tablewrap"${EXP.length ? '' : ' hidden'}>
+      <table class="tbl"><thead><tr><th>商品</th><th>分類</th><th>數量</th><th>單價</th><th>總額</th><th>台幣</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>`;
+  $('#e-add').onclick = onAddExpense;
+  $('#content').querySelectorAll('[data-del]').forEach(b => b.onclick = () => onDelExpense(+b.dataset.del));
+  drawExpChart();
+}
+async function onAddExpense() {
+  const name = $('#e-name').value.trim();
+  const amount = parseFloat($('#e-amt').value);
+  if (!name || isNaN(amount)) { alert('請至少輸入商品名稱和金額'); return; }
+  const qty = parseInt($('#e-qty').value, 10); const rate = parseFloat($('#e-rate').value);
+  EXP.push({ name, category: $('#e-cat').value, qty: (qty > 0 ? qty : 1), amount, rate: (isNaN(rate) ? getDefaultRate() : rate) });
+  $('#e-add').disabled = true;
+  try { await persistExpenses(); } catch (e) { alert('儲存失敗:' + e.message); EXP.pop(); }
+  $('#e-add').disabled = false;
+  drawExpenses(getDefaultRate());
+}
+async function onDelExpense(i) {
+  if (!confirm('確定刪除這筆支出?')) return;
+  const removed = EXP.splice(i, 1);
+  try { await persistExpenses(); } catch (e) { alert('刪除失敗:' + e.message); EXP.splice(i, 0, removed[0]); }
+  drawExpenses(getDefaultRate());
+}
+function drawExpChart() {
+  if (EXPCHART) { try { EXPCHART.destroy(); } catch (e) {} EXPCHART = null; }
+  if (!EXP.length || typeof Chart === 'undefined') return;
+  const sums = {}; EXP_CATS.forEach(c => sums[c] = 0);
+  EXP.forEach(e => { const c = EXP_CATS.indexOf(e.category) === -1 ? '其他' : e.category; sums[c] += twdOf(e); });
+  const labels = EXP_CATS.filter(c => sums[c] > 0);
+  const data = labels.map(c => sums[c]);
+  const colors = labels.map(c => EXP_COLORS[EXP_CATS.indexOf(c)]);
+  const ctx = document.getElementById('expchart'); if (!ctx) return;
+  EXPCHART = new Chart(ctx, { type: 'pie', data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#fff', borderWidth: 2 }] },
+    options: { plugins: { legend: { position: 'bottom', labels: { font: { family: 'DotGothic16' } } } } } });
+}
+
 function renderView() {
   const sh = TRIP.sheets[curSheet];
   const title = `<div class="section-title">${ICONS[curSheet] || ''} ${esc(curSheet)}</div>`;
