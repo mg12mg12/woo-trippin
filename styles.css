@@ -16,8 +16,54 @@ img,.orb svg{image-rendering:pixelated}
 
 /* 共用像素框 */
 .topbar{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:var(--panel);border-bottom:2px solid var(--line);position:sticky;top:0;z-index:20}
-.brand{font-family:var(--px);font-size:15px;color:var(--green-d);cursor:pointer;letter-spacing:1px}
-.brand .logo{color:var(--gold)}
+.brand{display:flex;align-items:center;gap:8px;font-family:var(--px);font-size:15px;color:var(--green-d);letter-spacing:1px;margin-left:76px}
+.brand-name{cursor:pointer}
+
+/* 頁角選單鈕(翹起的頁角 + 輕輕上下晃動)*/
+.corner-btn{position:fixed;top:0;left:0;width:88px;height:88px;z-index:70;border:0;background:none;padding:0;cursor:pointer;
+  filter:drop-shadow(3px 3px 0 var(--shadow));animation:cornerBob 2.4s ease-in-out infinite;transform-origin:0 0}
+.corner-btn svg{display:block;width:100%;height:100%}
+.corner-btn:hover{animation-play-state:paused;transform:scale(1.06)}
+.corner-btn.hide{display:none}
+@keyframes cornerBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@media(prefers-reduced-motion:reduce){.corner-btn{animation:none}}
+
+/* 掀頁選單(CodePen corner-fold 式):
+   點左上摺角 → 摺角沿 45° 摺線越掀越大,紙背摺片掃下來,底下露出選單頁。
+   clip-path 與摺片形狀由 app.js 逐格計算(drawFold)。 */
+.side-mask{position:fixed;inset:0;background:rgba(44,59,51,.45);z-index:75}
+.menu-page{position:fixed;inset:0;z-index:80;background:#19b89a;
+  background-image:linear-gradient(rgba(255,255,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.08) 1px,transparent 1px);
+  background-size:16px 16px;
+  clip-path:polygon(0 0,0 0,0 0)}
+.page-flap{position:fixed;inset:0;z-index:81;pointer-events:none;visibility:hidden}
+.page-flap.show{visibility:visible}
+.page-flap svg{display:block;width:100%;height:100%}
+.menu-inner{padding:20px 22px;max-width:420px}
+.menu-account{display:flex;align-items:center;gap:12px;padding:6px 0 16px;border-bottom:2px dashed rgba(255,255,255,.55);max-width:340px}
+.side-avatar{width:56px;height:56px;flex:0 0 auto;border:2px solid var(--line);box-shadow:3px 3px 0 rgba(12,125,112,.55);background:#fff;cursor:pointer;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border-radius:50%}
+.side-avatar img{width:100%;height:100%;object-fit:cover;image-rendering:pixelated;border-radius:50%}
+.side-avatar:hover{transform:translate(-1px,-1px)}
+.avatar-ph{font-size:26px;line-height:1}
+.side-user{min-width:0;flex:1}
+.side-name{font-size:14px;line-height:1.4;color:#fff}
+.side-email{font-family:var(--px);font-size:8px;color:#d9f3ec;margin-top:5px;word-break:break-all;line-height:1.6}
+.side-close{border:0;background:none;font-size:16px;color:#eafff1;cursor:pointer;padding:4px;flex:0 0 auto}
+.side-close:hover{color:var(--gold)}
+.menu-list{margin-top:20px;display:flex;flex-direction:column;gap:12px;max-width:260px}
+.menu-item{font-family:var(--cjk);text-align:left;background:rgba(255,255,255,.14);border:2px solid #fff;color:#fff;padding:10px 14px;font-size:15px;cursor:pointer;box-shadow:3px 3px 0 rgba(12,125,112,.55)}
+.menu-item:hover{background:#fff;color:var(--green-d)}
+.menu-item:active{transform:translate(3px,3px);box-shadow:0 0 0 rgba(0,0,0,0)}
+
+/* 頭像選擇彈窗 */
+.avatar-modal{position:fixed;inset:0;background:rgba(44,59,51,.5);z-index:90;display:flex;align-items:center;justify-content:center;padding:16px}
+.avatar-card{background:var(--panel);border:2px solid var(--line);box-shadow:4px 4px 0 var(--shadow);padding:16px;max-width:420px;width:100%;max-height:80vh;overflow:auto}
+.avatar-title{font-size:15px;color:var(--green-d);margin-bottom:12px}
+.avatar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:10px;margin-bottom:14px}
+.avatar-opt{padding:0;border:2px solid var(--line);background:#fff;cursor:pointer;box-shadow:3px 3px 0 var(--shadow);aspect-ratio:1/1;overflow:hidden;border-radius:50%}
+.avatar-opt img{width:100%;height:100%;object-fit:cover;image-rendering:pixelated;display:block;border-radius:50%}
+.avatar-opt:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--shadow)}
+.avatar-opt.sel{border-color:var(--gold);outline:3px solid var(--gold);outline-offset:2px;border-radius:50%}
 .badge{font-family:var(--px);font-size:9px;background:var(--gold);color:var(--ink);border:2px solid var(--line);padding:4px 7px}
 .wrap{max-width:880px;margin:22px auto;padding:0 16px}
 
@@ -128,6 +174,18 @@ table.grid input:focus,table.grid textarea:focus{outline:3px solid var(--gold);o
 .edit-hint{font-size:12px;color:var(--muted);margin:12px 2px 0;line-height:1.8}
 .colbtns{display:flex;gap:8px;margin:12px 0 0}
 
+/* 頁尾(風景剪影,山稜線當上緣,不是一直線)*/
+.footer{margin-top:56px}
+.footer-scene{line-height:0}
+.footer-scene svg{display:block;width:100%;height:clamp(110px,16vw,200px)}
+.footer-body{background:#0c7d70;text-align:center;padding:4px 16px 28px;
+  background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);
+  background-size:16px 16px}
+.f-brand{font-family:var(--px);font-size:13px;color:#fff;letter-spacing:1px}
+.f-brand .logo{color:var(--gold)}
+.f-note{font-size:13px;color:#d9f3ec;margin-top:10px}
+.f-copy{font-family:var(--px);font-size:9px;color:#8fd4c6;margin-top:14px;letter-spacing:1px}
+
 /* 至頂 */
 .to-top{position:fixed;right:18px;bottom:18px;width:60px;padding:0;display:flex;flex-direction:column;align-items:center;gap:2px;font-family:var(--px);font-size:14px;border:0;background:none;color:var(--green-d);cursor:pointer;z-index:60}
 .to-top-anim{display:block;width:52px;height:52px;pointer-events:none;filter:drop-shadow(2px 2px 0 var(--shadow))}
@@ -143,6 +201,11 @@ table.grid input:focus,table.grid textarea:focus{outline:3px solid var(--gold);o
 .fly2 .cloud{position:absolute;color:#fff;font-size:64px;opacity:.85;animation:cloudDrift 1.9s steps(12) both}
 @keyframes planeFly{0%{transform:translateX(-60vw) translateY(-50%);opacity:0}14%{opacity:1}86%{opacity:1}100%{transform:translateX(60vw) translateY(-50%);opacity:0}}
 @keyframes cloudDrift{0%{transform:translateX(0)}100%{transform:translateX(20px)}}
+
+/* 通用讀取遮罩(換頁/等待用):飛機循環飛、文字直接顯示、擋住點擊 */
+.loading-ov{transition:opacity .35s;pointer-events:auto}
+.loading-ov .plane{animation:planeFly 1.7s steps(30) infinite}
+.loading-ov .fly-load{opacity:1}
 
 /* 地圖彈窗 / 圖釘 */
 .map-pop{min-width:160px;font-family:var(--cjk)}

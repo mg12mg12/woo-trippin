@@ -26,9 +26,81 @@
   </div>
 </div>
 <header class="topbar">
-  <div class="brand" id="home-link"><span class="logo">▶</span> TRIPPIN</div>
+  <div class="brand">
+    <span class="brand-name" id="home-link">TRIPPIN</span>
+  </div>
   <div class="user"><span id="env-badge" class="badge" hidden>DEMO</span></div>
 </header>
+
+<!-- 頁角選單鈕:跟掀頁動畫起點一樣的小摺角(綠色頁角 + 白色捲摺 + MENU) -->
+<button class="corner-btn" id="menu-btn" aria-label="開啟選單" title="選單">
+  <svg viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <pattern id="btngrid" width="16" height="16" patternUnits="userSpaceOnUse">
+        <rect width="16" height="16" fill="#19b89a"/>
+        <path d="M0 0 H16 V16" fill="none" stroke="rgba(255,255,255,.12)"/>
+      </pattern>
+      <linearGradient id="btnfold" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ffffff"/>
+        <stop offset=".55" stop-color="#e6f2ec"/>
+        <stop offset="1" stop-color="#a9c8bb"/>
+      </linearGradient>
+      <filter id="btnsh" x="-40%" y="-40%" width="180%" height="180%">
+        <feDropShadow dx="2" dy="3" stdDeviation="2.5" flood-color="#14352a" flood-opacity=".4"/>
+      </filter>
+    </defs>
+    <path d="M0 0 H88 L0 88 Z" fill="url(#btngrid)"/>
+    <path d="M88 0 Q 75.6 31.6 72 72 Q 31.6 75.6 0 88 Z" fill="url(#btnfold)" stroke="#5f8474" stroke-width="2" filter="url(#btnsh)"/>
+    <text x="56" y="60" transform="rotate(-45 56 56)" text-anchor="middle" font-family="'Press Start 2P',monospace" font-size="10" fill="#33574a" letter-spacing="1">MENU</text>
+  </svg>
+</button>
+
+<!-- 翻頁選單 -->
+<div id="side-mask" class="side-mask" hidden></div>
+<div id="menu-page" class="menu-page" aria-hidden="true">
+  <div class="menu-inner">
+    <div class="menu-account">
+      <button class="side-avatar" id="side-avatar" title="更換頭像">
+        <img id="avatar-img" alt="頭像" hidden/>
+        <span id="avatar-ph" class="avatar-ph">👤</span>
+      </button>
+      <div class="side-user">
+        <div id="side-name" class="side-name">—</div>
+        <div id="side-email" class="side-email"></div>
+      </div>
+      <button class="side-close" id="side-close" aria-label="關閉選單">✕</button>
+    </div>
+    <nav class="menu-list">
+      <button class="menu-item" id="menu-home">🏠 首頁</button>
+      <!-- 之後的選單項目往下加 -->
+    </nav>
+  </div>
+</div>
+<!-- 掀頁摺片:沿 45° 摺線長大的紙背(MENU 字不跟著,點開就交給下面的選單頁) -->
+<div id="page-flap" class="page-flap" aria-hidden="true">
+  <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="flapg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ffffff"/>
+        <stop offset=".55" stop-color="#e6f2ec"/>
+        <stop offset="1" stop-color="#a9c8bb"/>
+      </linearGradient>
+      <filter id="flapsh" x="-40%" y="-40%" width="180%" height="180%">
+        <feDropShadow dx="6" dy="10" stdDeviation="8" flood-color="#14352a" flood-opacity=".45"/>
+      </filter>
+    </defs>
+    <path id="flap-path" d="" fill="url(#flapg)" stroke="#5f8474" stroke-width="2.5" filter="url(#flapsh)"/>
+  </svg>
+</div>
+
+<!-- 頭像選擇彈窗 -->
+<div id="avatar-modal" class="avatar-modal" hidden>
+  <div class="avatar-card">
+    <div class="avatar-title">選擇頭像</div>
+    <div id="avatar-grid" class="avatar-grid"></div>
+    <button class="btn-ghost" id="avatar-cancel">取消</button>
+  </div>
+</div>
 
 <main class="wrap">
   <!-- 首頁 -->
@@ -66,6 +138,38 @@
     <div id="content" class="content"></div>
   </section>
 </main>
+
+<footer class="footer">
+  <div class="footer-scene" aria-hidden="true">
+    <svg viewBox="0 0 1440 200" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- 太陽(像素方塊)-->
+      <rect x="1150" y="22" width="36" height="36" fill="#ffc857"/>
+      <rect x="1142" y="34" width="8" height="12" fill="#ffc857"/><rect x="1186" y="34" width="8" height="12" fill="#ffc857"/>
+      <rect x="1162" y="12" width="12" height="8" fill="#ffc857"/><rect x="1162" y="60" width="12" height="8" fill="#ffc857"/>
+      <!-- 雲(白色像素塊)-->
+      <rect x="150" y="42" width="76" height="14" fill="#ffffff" opacity=".9"/><rect x="172" y="30" width="42" height="14" fill="#ffffff" opacity=".9"/>
+      <rect x="560" y="24" width="64" height="12" fill="#ffffff" opacity=".75"/><rect x="578" y="14" width="34" height="12" fill="#ffffff" opacity=".75"/>
+      <rect x="940" y="48" width="70" height="13" fill="#ffffff" opacity=".85"/><rect x="960" y="37" width="38" height="13" fill="#ffffff" opacity=".85"/>
+      <!-- 航線 + 小飛機 -->
+      <path d="M40 100 Q 380 34 720 86 T 1360 58" fill="none" stroke="#ffc857" stroke-width="4" stroke-dasharray="10 12" stroke-linecap="round" opacity=".9"/>
+      <text x="1352" y="60" font-size="30" fill="#0c7d70">✈</text>
+      <!-- 後排山(主題色 亮)-->
+      <path d="M0 130 L120 70 L200 110 L300 45 L400 115 L520 65 L640 125 L760 60 L880 115 L1000 50 L1120 118 L1240 75 L1360 120 L1440 90 L1440 200 L0 200 Z" fill="#19b89a"/>
+      <!-- 前排山 + 樹(主題色 暗)-->
+      <path d="M0 160 L100 120 L180 150 L260 105 L360 155 L480 115 L600 158 L720 112 L840 155 L960 120 L1080 158 L1200 118 L1320 152 L1440 128 L1440 200 L0 200 Z" fill="#0c7d70"/>
+      <path d="M130 155 l24 -34 l24 34 z M140 138 l14 -22 l14 22 z
+               M410 152 l22 -30 l22 30 z M419 136 l13 -20 l13 20 z
+               M655 158 l26 -38 l26 38 z M666 138 l15 -24 l15 24 z
+               M880 152 l22 -32 l22 32 z M889 135 l13 -21 l13 21 z
+               M1230 150 l24 -34 l24 34 z M1240 133 l14 -22 l14 22 z" fill="#0c7d70"/>
+    </svg>
+  </div>
+  <div class="footer-body">
+    <div class="f-brand"><span class="logo">▶</span> TRIPPIN</div>
+    <div class="f-note">想去哪，就去哪 ( • ̀ω•́ )✧</div>
+    <div class="f-copy">© 2026 TRIPPIN · POWERED BY GOOGLE SHEETS</div>
+  </div>
+</footer>
 
 <button id="to-top" class="to-top" aria-label="回到頂端" hidden>
   <span id="to-top-anim" class="to-top-anim" aria-hidden="true"></span>

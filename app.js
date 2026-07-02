@@ -34,6 +34,12 @@ function orbSvg(t) {
 }
 
 let TRIP = null, curSheet = null, mode = 'view', editModel = null, dirty = false, MAP = null;
+let USER = null;  // 登入後的帳號 { email, name };本機 DEV 用示範帳號
+
+// 預設頭像:之後把圖檔放進 web/avatars/ 資料夾,再把「檔名」列在這裡即可,例:
+// const AVATARS = ['cat.png', 'dog.png', 'bear.png'];
+const AVATAR_DIR = 'avatars/';
+const AVATARS = ['1-removebg-preview.png', '2-removebg-preview.png', '3-removebg-preview.png'];
 let SEASON = 'summer';
 let ID_TOKEN = null;  // 上線時 Google 登入取得的憑證(本機 DEV 不需要)
 // 各季圖釘:檔名 + 顯示尺寸 + 綠底圓心(% 相對圖釘),數字壓在圓心
@@ -45,6 +51,99 @@ const PINS = {
 };
 
 if (DEV) $('#env-badge').hidden = false;
+
+// ---------- 側邊欄 + 頭像 ----------
+function avatarKey() { return 'avatar:' + ((USER && USER.email) || 'demo'); }
+function applyAvatar() {
+  const img = $('#avatar-img'), ph = $('#avatar-ph');
+  const f = LS.getItem(avatarKey());
+  if (f) {
+    img.onerror = () => { img.hidden = true; ph.hidden = false; };
+    img.src = AVATAR_DIR + f; img.hidden = false; ph.hidden = true;
+  } else { img.hidden = true; ph.hidden = false; }
+}
+function refreshSideUser() {
+  $('#side-name').textContent = (USER && USER.name) || (DEV ? '本機示範' : '未登入');
+  $('#side-email').textContent = (USER && USER.email) || '';
+  applyAvatar();
+}
+// ---- 掀頁動畫(corner fold):摺線從「頂邊 95% 寬」斜到「左邊 92% 高」(陡角度),
+//      白色頁角尖端停在約 (0.8 寬, 0.5 高),邊緣帶紙張弧線。p = 動畫進度 0~1 ----
+const FOLD = { D0: 88, extX: 0.95, extY: 0.92, extXd: 0.55, extYd: 0.62, tipX: 0.80, tipY: 0.50, dur: 750 };
+let foldCur = 0, foldRaf = null;
+function drawFold(p) {
+  const W = innerWidth, H = innerHeight;
+  const desk = W > 760;                              // 桌機:翻到一半就好,頁角才不會變形
+  const exX = desk ? FOLD.extXd : FOLD.extX;
+  const exY = desk ? FOLD.extYd : FOLD.extY;
+  const DyT = desk ? Math.max(exY * H, 470) : exY * H;   // 矮視窗保底,選單項目不被摺線切到
+  const Dx = FOLD.D0 + (exX * W - FOLD.D0) * p;
+  const Dy = FOLD.D0 + (DyT - FOLD.D0) * p;
+  const tx = (0.82 + (FOLD.tipX - 0.82) * p) * Dx;   // 尖端從按鈕形狀漸變到定位
+  const ty = (0.82 + (FOLD.tipY - 0.82) * p) * Dy;
+  // 摺線是直線;頁角兩側是「內凹」的紙張弧線(尖端銳利,像紙被拉緊)
+  $('#menu-page').style.clipPath = `polygon(0 0, ${Dx}px 0, 0 ${Dy}px)`;
+  const u1x = (Dx + tx) / 2 - 0.05 * Dx, u1y = ty / 2 - 0.05 * Dy;
+  const l1x = tx / 2 - 0.05 * Dx, l1y = (ty + Dy) / 2 - 0.05 * Dy;
+  $('#flap-path').setAttribute('d',
+    `M${Dx} 0 Q ${u1x} ${u1y} ${tx} ${ty} Q ${l1x} ${l1y} 0 ${Dy} Z`);
+}
+function foldAnim(opening, done) {
+  cancelAnimationFrame(foldRaf);
+  const from = foldCur, to = opening ? 1 : 0;
+  const ease = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  let t0 = null;
+  const step = (ts) => {
+    if (!t0) t0 = ts;
+    const q = Math.min((ts - t0) / FOLD.dur, 1);
+    foldCur = from + (to - from) * ease(q);
+    drawFold(foldCur);
+    if (q < 1) foldRaf = requestAnimationFrame(step); else if (done) done();
+  };
+  foldRaf = requestAnimationFrame(step);
+}
+window.addEventListener('resize', () => {
+  if ($('#menu-page').classList.contains('open')) drawFold(foldCur);
+});
+
+function openSide() {
+  refreshSideUser();
+  $('#menu-page').classList.add('open'); $('#menu-page').setAttribute('aria-hidden', 'false');
+  $('#menu-btn').classList.add('hide');       // 點了小摺角就消失,交給摺片
+  $('#page-flap').classList.add('show');
+  $('#side-mask').hidden = false;
+  foldAnim(true);
+}
+function closeSide() {
+  $('#menu-page').classList.remove('open'); $('#menu-page').setAttribute('aria-hidden', 'true');
+  $('#side-mask').hidden = true;
+  foldAnim(false, () => {                     // 收回到角落後,恢復小摺角
+    $('#menu-page').style.clipPath = 'polygon(0 0,0 0,0 0)';
+    $('#page-flap').classList.remove('show');
+    $('#menu-btn').classList.remove('hide');
+  });
+}
+$('#menu-btn').onclick = openSide;
+$('#side-close').onclick = closeSide;
+$('#side-mask').onclick = closeSide;
+$('#menu-home').onclick = () => { closeSide(); if (guardDirty()) { showLoading(); showHome(); hideLoading(); } };
+
+function openAvatarModal() {
+  const grid = $('#avatar-grid');
+  const cur = LS.getItem(avatarKey());
+  grid.innerHTML = AVATARS.length
+    ? AVATARS.map(f => `<button class="avatar-opt ${f === cur ? 'sel' : ''}" data-f="${esc(f)}" title="${esc(f)}"><img src="${AVATAR_DIR}${esc(f)}" alt="${esc(f)}"/></button>`).join('')
+    : '<p class="muted" style="grid-column:1/-1;margin:4px 2px;line-height:1.8">還沒有頭像圖檔。<br/>把圖片放進 <b>web/avatars/</b> 資料夾,再把檔名加進 app.js 上方的 <b>AVATARS</b> 清單。</p>';
+  grid.querySelectorAll('.avatar-opt').forEach(b => b.onclick = () => {
+    LS.setItem(avatarKey(), b.dataset.f);   // 每個帳號各自記住選的頭像
+    applyAvatar();
+    $('#avatar-modal').hidden = true;
+  });
+  $('#avatar-modal').hidden = false;
+}
+$('#side-avatar').onclick = openAvatarModal;
+$('#avatar-cancel').onclick = () => { $('#avatar-modal').hidden = true; };
+$('#avatar-modal').onclick = (e) => { if (e.target.id === 'avatar-modal') $('#avatar-modal').hidden = true; };
 
 // ---------- 至頂按鈕 ----------
 const toTop = $('#to-top');
@@ -105,6 +204,7 @@ async function saveSheetRemote(name, sheet) {
 
 // ---------- 首頁(波浪小徑 + 腳印)----------
 function showHome() {
+  setHash(null);
   $('#trip-view').hidden = true; $('#home-view').hidden = false;
   const trips = homeTrips();
   const items = trips.map((t, i) => {
@@ -161,14 +261,60 @@ async function flyToTrip(bubbleEl, id, theme) {
   setTimeout(() => ov.remove(), 600);
 }
 
-$('#home-link').onclick = () => { if (guardDirty()) showHome(); };
-$('#back').onclick = () => { if (guardDirty()) showHome(); };
+$('#home-link').onclick = () => { if (guardDirty()) { showLoading(); showHome(); hideLoading(); } };
+$('#back').onclick = () => { if (guardDirty()) { showLoading(); showHome(); hideLoading(); } };
 function guardDirty() { return !(mode === 'edit' && dirty) || confirm('有未儲存的修改,確定離開並放棄?'); }
 
+// ---------- 通用讀取遮罩(所有換頁/等待時顯示)----------
+let LOAD_N = 0, LOAD_EL = null, LOAD_AT = 0;
+function showLoading(text) {
+  LOAD_N++;
+  if (LOAD_EL) return;
+  LOAD_AT = Date.now();
+  const ov = document.createElement('div');
+  ov.className = 'fly2 loading-ov';
+  ov.innerHTML = `<span class="cloud" style="top:13%;left:9%;font-size:74px">☁</span>
+    <span class="cloud" style="top:24%;right:11%;font-size:92px;color:#e7eef0">☁</span>
+    <span class="cloud" style="bottom:16%;left:16%;font-size:56px;color:#e7eef0">☁</span>
+    <span class="cloud" style="bottom:28%;right:18%;font-size:70px">☁</span>
+    <span class="plane">✈</span><span class="fly-load">讀取中…</span>`;
+  if (text) ov.querySelector('.fly-load').textContent = text;
+  document.body.appendChild(ov);
+  LOAD_EL = ov;
+}
+async function hideLoading() {
+  if (LOAD_N > 0) LOAD_N--;
+  if (LOAD_N > 0 || !LOAD_EL) return;
+  const el = LOAD_EL; LOAD_EL = null;
+  const wait = 500 - (Date.now() - LOAD_AT);   // 至少顯示 0.5 秒,避免閃一下
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  el.style.opacity = '0';
+  setTimeout(() => el.remove(), 400);
+}
+
+// ---------- 網址狀態(重整後停留在同一行程/同一分頁)----------
+function setHash(tripId, sheet) {
+  const h = tripId ? '#t=' + encodeURIComponent(tripId) + (sheet ? '&s=' + encodeURIComponent(sheet) : '') : '';
+  try { history.replaceState(null, '', h || location.pathname + location.search); } catch (e) {}
+}
+function parseHash() {
+  const out = {};
+  location.hash.slice(1).split('&').forEach(kv => {
+    const i = kv.indexOf('=');
+    if (i > 0) { try { out[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} }
+  });
+  return out;
+}
+async function restoreFromHash() {
+  const h = parseHash();
+  if (h.t && homeTrips().some(t => t.id === h.t)) { await openTrip(h.t, h.s); return; }
+  showHome();
+}
+
 // ---------- 開啟行程 ----------
-async function openTrip(id) {
-  const meta = homeTrips().find(t => t.id === id); if (!meta) return;
-  try { TRIP = await loadTrip(meta); } catch (e) { alert('讀取失敗:' + e.message); return; }
+async function openTrip(id, wantSheet) {
+  const meta = homeTrips().find(t => t.id === id); if (!meta) { showHome(); return; }
+  try { TRIP = await loadTrip(meta); } catch (e) { alert('讀取失敗:' + e.message); showHome(); return; }
   $('#home-view').hidden = true; $('#trip-view').hidden = false;
   $('#trip-head').innerHTML = `<span class="tn">${esc(TRIP.name)}</span>
     <span class="troute">${esc(TRIP.origin || '')} ✈ ${esc(TRIP.dest || '')}</span>
@@ -180,14 +326,17 @@ async function openTrip(id) {
   tabsHtml += `<button class="tab" data-s="__exp__"><span class="ic">💵</span><span class="lab">支出</span></button>`;
   $('#sectionnav').innerHTML = tabsHtml;
   $('#sectionnav').querySelectorAll('.tab').forEach(t => t.onclick = () => selectSheet(t.dataset.s));
-  curSheet = names[0]; setActiveTab(curSheet); $('#toolbar').hidden = false; setMode('view');
+  const target = (wantSheet && (names.indexOf(wantSheet) !== -1 || wantSheet === '__exp__')) ? wantSheet : names[0];
+  curSheet = target; setActiveTab(target); setHash(id, target);
+  if (target === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
+  else { $('#toolbar').hidden = false; setMode('view'); }
 }
 function setActiveTab(name) { $('#sectionnav').querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.s === name)); }
 function selectSheet(name) {
   if (!guardDirty()) return;
-  curSheet = name; setActiveTab(name);
-  if (name === '__exp__') { $('#toolbar').hidden = true; renderExpenses(); }
-  else { $('#toolbar').hidden = false; setMode('view'); }
+  curSheet = name; setActiveTab(name); setHash(TRIP && TRIP.id, name);
+  if (name === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
+  else { $('#toolbar').hidden = false; showLoading(); setMode('view'); hideLoading(); }
 }
 
 // ---------- 真實地圖(Leaflet)----------
@@ -234,7 +383,7 @@ function renderMap() {
 window.__jumpDay = (i) => { if (MAP) MAP.closePopup(); jumpToDay(i); };
 function jumpToDay(i) {
   if (!guardDirty()) return;
-  if (curSheet !== '每日行程') { curSheet = '每日行程'; setActiveTab(curSheet); setMode('view'); }
+  if (curSheet !== '每日行程') { curSheet = '每日行程'; setActiveTab(curSheet); setHash(TRIP && TRIP.id, curSheet); setMode('view'); }
   const el = document.getElementById('day-' + i); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -455,10 +604,11 @@ function showLoginErr(msg) { const e = $('#login-err'); if (e) { e.hidden = fals
 async function onCredential(resp) {
   ID_TOKEN = resp.credential;
   try {
-    await apiPost('me', {});               // 後端驗證 token + email 白名單
+    USER = await apiPost('me', {});        // 後端驗證 token + email 白名單
     try { localStorage.setItem('idt', ID_TOKEN); } catch (e) {}
     $('#login-gate').hidden = true;
-    showHome();
+    showLoading();
+    try { await restoreFromHash(); } finally { hideLoading(); }
   } catch (e) {
     ID_TOKEN = null;
     showLoginErr('登入失敗:' + e.message);
@@ -467,13 +617,20 @@ async function onCredential(resp) {
 
 // ---------- 啟動 ----------
 async function boot() {
-  if (DEV) { showHome(); return; }
+  showLoading();
+  if (DEV) { USER = { email: 'demo@local', name: '本機示範' }; try { await restoreFromHash(); } finally { hideLoading(); } return; }
   const saved = (function(){ try { return localStorage.getItem('idt'); } catch (e) { return null; } })();
   if (saved) {
     ID_TOKEN = saved;
-    try { await apiPost('me', {}); const g = $('#login-gate'); if (g) g.hidden = true; showHome(); return; }
+    try {
+      USER = await apiPost('me', {}); const g = $('#login-gate'); if (g) g.hidden = true;
+      try { await restoreFromHash(); } finally { hideLoading(); }
+      return;
+    }
     catch (e) { ID_TOKEN = null; try { localStorage.removeItem('idt'); } catch (e2) {} }
   }
+  hideLoading();   // 進登入畫面時收掉遮罩
   startLogin();
 }
 boot();
+
