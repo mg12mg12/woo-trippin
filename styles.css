@@ -174,6 +174,51 @@ table.grid input:focus,table.grid textarea:focus{outline:3px solid var(--gold);o
 .edit-hint{font-size:12px;color:var(--muted);margin:12px 2px 0;line-height:1.8}
 .colbtns{display:flex;gap:8px;margin:12px 0 0}
 
+/* 功能許願池:4x2 精靈圖噴泉,置中、大小近似地圖 */
+.wishwrap{display:flex;justify-content:center;margin:8px 0 20px}
+.fountain{position:relative;width:min(100%,700px);aspect-ratio:1408/768;
+  background:url('image/fountain_spritesheet_4x2.png') 0% 0% no-repeat;
+  background-size:400% 200%;
+  image-rendering:pixelated;
+  border:2px solid var(--line);box-shadow:4px 4px 0 var(--shadow);overflow:hidden}
+/* 待機小狗:站在噴泉左前方石板路上,4x2 精靈圖循環
+   (數字含精靈圖透明留白;調位置改 left/bottom,調大小改 width) */
+.idle-dog{position:absolute;left:5.5%;bottom:-24.3%;width:55%;aspect-ratio:1/1;
+  background:url('image/dog_idle_4x2.png') 0% 0% no-repeat;
+  background-size:400% 200%;image-rendering:pixelated;pointer-events:none}
+/* 投硬幣狀態:換成 5x5 精靈圖,狗在格內位置與待機圖一致,大小不變 */
+.idle-dog.throw{background-image:url('image/throw_coins_no_well.png');background-size:500% 500%}
+/* 許願輸入 + 按鈕 */
+.wishform{display:flex;justify-content:center;align-items:center;gap:10px;margin:18px 0;flex-wrap:wrap}
+.wishform input{flex:1;min-width:220px;max-width:400px;border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:10px 12px;font-family:var(--cjk);font-size:14px;background:#fff;color:var(--ink)}
+.wishform input:focus{outline:3px solid var(--gold);outline-offset:-1px}
+.wish-btn{font-size:16px;padding:10px 28px}
+.wish-btn:disabled{background:#9aa6a0}
+
+/* 「心願已送達」飄字:從雕像右側開始,每個字沿波浪上下起伏,往右飄出淡出(JS 控制) */
+.wish-float{position:absolute;left:0;top:26%;z-index:5;font-family:var(--cjk);font-size:clamp(14px,2.8vw,22px);color:#fff;text-shadow:2px 2px 0 rgba(12,60,50,.65);white-space:nowrap;pointer-events:none;letter-spacing:6px}
+.wish-float span{display:inline-block}
+
+/* 願望看板(16-bit 任務板:木框 + 圖釘紙條) */
+.wishboard{border:4px solid #6b4326;background:#a06b3a;box-shadow:4px 4px 0 var(--shadow);padding:0 12px 14px;margin:6px 0 26px}
+.wb-title{text-align:center;margin:12px auto 8px;background:#6b4326;color:#f3e2c0;display:table;padding:6px 24px;font-size:15px;letter-spacing:2px;border:2px solid #4a2c17}
+.wb-head{display:flex;gap:8px;padding:4px 6px;font-size:11px;color:#f3e2c0}
+.wb-row{display:flex;gap:8px;align-items:center;background:#f3e2c0;border:2px solid #4a2c17;box-shadow:2px 2px 0 #4a2c17;padding:7px 8px;margin:7px 0;position:relative}
+.wb-pin{position:absolute;top:-5px;left:50%;width:8px;height:8px;background:#c0392b;border:1px solid #4a2c17;border-radius:50%}
+.wb-row .wd,.wb-head .wd{width:74px;font-size:11px;color:#6b4326;flex:0 0 auto}
+.wb-row .wc,.wb-head .wc{flex:1;font-size:13px;color:#3a2a18;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.wb-row .wu,.wb-head .wu{width:72px;font-size:11px;color:#6b4326;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 0 auto}
+.wb-row .ws,.wb-head .ws{width:34px;text-align:center;flex:0 0 auto}
+.wb-head .wd,.wb-head .wc,.wb-head .wu{color:#f3e2c0}
+.wb-ok{color:#2f9e82;font-weight:bold}
+.wb-no{color:#b09a7a}
+.wb-empty{color:#f3e2c0;text-align:center;font-size:13px;padding:14px 0;margin:0}
+.wb-pager{display:flex;justify-content:center;gap:14px;align-items:center;margin-top:10px}
+.wb-pg{border:2px solid #4a2c17;background:#6b4326;color:#f3e2c0;font-family:var(--cjk);padding:4px 14px;cursor:pointer;font-size:13px}
+.wb-pg:active{transform:translate(2px,2px)}
+#wb-info{color:#f3e2c0;font-size:13px}
+@media(max-width:560px){.wb-row .wu,.wb-head .wu{width:56px}.wb-row .wd,.wb-head .wd{width:64px;font-size:10px}}
+
 /* 頁尾(風景剪影,山稜線當上緣,不是一直線)*/
 .footer{margin-top:56px}
 .footer-scene{line-height:0}

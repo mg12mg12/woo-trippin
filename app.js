@@ -127,6 +127,24 @@ $('#menu-btn').onclick = openSide;
 $('#side-close').onclick = closeSide;
 $('#side-mask').onclick = closeSide;
 $('#menu-home').onclick = () => { closeSide(); if (guardDirty()) { showLoading(); showHome(); hideLoading(); } };
+$('#menu-wish').onclick = () => { closeSide(); if (guardDirty()) { showLoading(); showWish(); hideLoading(); } };
+$('#wish-back').onclick = () => { showLoading(); showHome(); hideLoading(); };
+$('#wish-input').oninput = () => { $('#wish-btn').disabled = !$('#wish-input').value.trim() || WISH_BUSY; };
+$('#wish-btn').onclick = async () => {
+  const val = $('#wish-input').value.trim();
+  if (!val || WISH_BUSY || DOG_THROWING) return;
+  WISH_BUSY = true; $('#wish-btn').disabled = true;
+  let animRes; const animDone = new Promise(r => { animRes = r; });
+  playWishThrow(() => { floatWishText(); animRes(); });   // 動畫播完 → 飄字
+  try {
+    await saveWishRow([nowWishStr(), val, wishUser(), '', '']);
+    $('#wish-input').value = '';
+    WISH_PAGE = 0; renderWishBoard();
+  } catch (e) { alert('許願送出失敗:' + e.message); }
+  await animDone;
+  WISH_BUSY = false;
+  $('#wish-btn').disabled = !$('#wish-input').value.trim();
+};
 
 function openAvatarModal() {
   const grid = $('#avatar-grid');
@@ -205,7 +223,8 @@ async function saveSheetRemote(name, sheet) {
 // ---------- 首頁(波浪小徑 + 腳印)----------
 function showHome() {
   setHash(null);
-  $('#trip-view').hidden = true; $('#home-view').hidden = false;
+  stopFountain();
+  $('#trip-view').hidden = true; $('#wish-view').hidden = true; $('#home-view').hidden = false;
   const trips = homeTrips();
   const items = trips.map((t, i) => {
     const th = THEMES[i % THEMES.length];
@@ -307,20 +326,167 @@ function parseHash() {
 }
 async function restoreFromHash() {
   const h = parseHash();
+  if (h.p === 'wish') { showWish(); return; }
   if (h.t && homeTrips().some(t => t.id === h.t)) { await openTrip(h.t, h.s); return; }
   showHome();
+}
+
+// ---------- 功能許願池(噴泉 4x2 循環;小狗待機 4x2 循環/投幣 5x5 播一次)----------
+let WISH_TIMER = null, THROW_TIMER = null, DOG_THROWING = false;
+function startFountain() {
+  stopFountain();
+  const el = $('#fountain'), dog = $('#idle-dog');
+  const pos = (i) => `${(i % 4) * 100 / 3}% ${Math.floor(i / 4) * 100}%`;
+  let i = 0, j = 0, tick = 0;
+  WISH_TIMER = setInterval(() => {
+    tick++;
+    i = (i + 1) % 8;                                  // 噴泉:每格 130ms
+    el.style.backgroundPosition = pos(i);
+    if (!DOG_THROWING && tick % 2 === 0) {            // 投幣中暫停待機動畫
+      j = (j + 1) % 8; dog.style.backgroundPosition = pos(j);
+    }
+  }, 130);
+}
+function stopFountain() {
+  if (WISH_TIMER) { clearInterval(WISH_TIMER); WISH_TIMER = null; }
+  if (THROW_TIMER) { clearInterval(THROW_TIMER); THROW_TIMER = null; }
+  DOG_THROWING = false; WISH_BUSY = false;
+  const dog = $('#idle-dog');
+  if (dog) { dog.classList.remove('throw'); dog.style.backgroundPosition = '0% 0%'; }
+  const fl = $('#wish-float'); if (fl) fl.hidden = true;
+}
+// 許願:投幣 5x5 共 25 格,只播一次,播完換回待機循環,結束時呼叫 onDone
+function playWishThrow(onDone) {
+  if (DOG_THROWING) { if (onDone) onDone(); return; }
+  DOG_THROWING = true;
+  const dog = $('#idle-dog');
+  dog.classList.add('throw');
+  dog.style.backgroundPosition = '0% 0%';
+  let k = 0;
+  THROW_TIMER = setInterval(() => {
+    k++;
+    if (k >= 25) {
+      clearInterval(THROW_TIMER); THROW_TIMER = null;
+      dog.classList.remove('throw');
+      dog.style.backgroundPosition = '0% 0%';   // 回到待機第 1 格,循環由主計時器接手
+      DOG_THROWING = false;
+      if (onDone) onDone();
+      return;
+    }
+    dog.style.backgroundPosition = `${(k % 5) * 25}% ${Math.floor(k / 5) * 25}%`;
+  }, 110);
+}
+
+// ---------- 許願資料(寫入第一個行程試算表的「願望清單」工作表)----------
+const WISH_SHEET = '願望清單';
+const WISH_HEADERS = ['日期', '內容', '許願人', '是否通過', '是否已完成'];
+let WISHES = [], WISH_PAGE = 0, WISH_BUSY = false;
+const wishUser = () => (USER && (USER.name || USER.email)) || '訪客';
+const wishSid = () => (CFG.TRIPS && CFG.TRIPS[0] && CFG.TRIPS[0].spreadsheetId) || '';
+function nowWishStr() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+async function loadWishes() {
+  if (DEV) { try { WISHES = JSON.parse(LS.getItem('wishes')) || []; } catch (e) { WISHES = []; } return; }
+  const d = await apiPost('dump', { spreadsheetId: wishSid() });
+  const sh = (d.sheets || {})[WISH_SHEET];
+  if (!sh) { WISHES = []; return; }
+  const H = sh.headers || [], ix = (n, f) => { const i = H.indexOf(n); return i === -1 ? f : i; };
+  const cD = ix('日期', 0), cC = ix('內容', 1), cU = ix('許願人', 2), cP = ix('是否通過', 3), cF = ix('是否已完成', 4);
+  WISHES = sh.rows.map(r => [r[cD] || '', r[cC] || '', r[cU] || '', r[cP] || '', r[cF] || '']);
+}
+async function saveWishRow(row) {
+  if (DEV) { WISHES.push(row); LS.setItem('wishes', JSON.stringify(WISHES)); return; }
+  const d = await apiPost('dump', { spreadsheetId: wishSid() });   // 先抓最新,避免覆蓋別人剛許的願
+  const sh = (d.sheets || {})[WISH_SHEET] || { headers: WISH_HEADERS, rows: [] };
+  const headers = (sh.headers && sh.headers.filter(h => h).length) ? sh.headers : WISH_HEADERS;
+  const rows = (sh.rows || []).concat([row]);
+  await apiPost('saveSheet', { spreadsheetId: wishSid(), sheetName: WISH_SHEET, headers, rows });
+  WISHES = rows;
+}
+
+// ---------- 願望看板(最新在上,每頁 10 筆)----------
+function renderWishBoard() {
+  const list = WISHES.slice().reverse();
+  const pages = Math.max(1, Math.ceil(list.length / 10));
+  if (WISH_PAGE >= pages) WISH_PAGE = pages - 1;
+  const rows = list.slice(WISH_PAGE * 10, WISH_PAGE * 10 + 10);
+  const stamp = v => String(v).trim() === '是' ? '<span class="wb-ok">✔</span>' : '<span class="wb-no">─</span>';
+  const short = s => (s || '').replace(/^\d{4}-/, '').slice(0, 11);   // 顯示 MM-DD HH:mm
+  $('#wb-rows').innerHTML = rows.length ? rows.map(w => `
+    <div class="wb-row"><span class="wb-pin"></span>
+      <span class="wd">${esc(short(w[0]))}</span>
+      <span class="wc" title="${esc(w[1])}">${esc(w[1])}</span>
+      <span class="wu" title="${esc(w[2])}">${esc(w[2])}</span>
+      <span class="ws">${stamp(w[3])}</span>
+      <span class="ws">${stamp(w[4])}</span>
+    </div>`).join('') : '<p class="wb-empty">還沒有願望,當第一個許願的人!</p>';
+  $('#wb-info').textContent = (WISH_PAGE + 1) + ' / ' + pages;
+}
+async function loadWishBoard() {
+  $('#wb-rows').innerHTML = '<p class="wb-empty">載入中…</p>';
+  try { await loadWishes(); } catch (e) { $('#wb-rows').innerHTML = '<p class="wb-empty">讀取失敗:' + esc(e.message) + '</p>'; return; }
+  renderWishBoard();
+}
+$('#wb-prev').onclick = () => { if (WISH_PAGE > 0) { WISH_PAGE--; renderWishBoard(); } };
+$('#wb-next').onclick = () => { const pages = Math.ceil(WISHES.length / 10); if (WISH_PAGE < pages - 1) { WISH_PAGE++; renderWishBoard(); } };
+
+// ---------- 「心願已送達」飄字:整串字沿波浪曲線(約1.5個波)從雕像右上方出發,騎在波浪上一路往右滑行、右邊界淡出 ----------
+function floatWishText() {
+  const el = $('#wish-float'), box = $('#fountain');
+  el.innerHTML = '心願已送達'.split('').map(ch => `<span>${ch}</span>`).join('');
+  el.hidden = false; el.style.opacity = 1;
+  el.style.left = '0'; el.style.top = '0'; el.style.transform = 'none';   // 交給各字自行定位
+  const spans = el.children;
+  const W = box.clientWidth, H = box.clientHeight;
+  const fs = parseFloat(getComputedStyle(spans[0]).fontSize) || 20;
+  const spacing = Math.max(fs * 1.15, W * 0.032);   // 字距
+  const baseY = H * 0.26;                            // 波浪中線(與雕像上緣齊高)
+  const amp = Math.max(12, H * 0.075);              // 振幅
+  const startX = W * 0.58;                           // 起點:小狗雕像右側
+  const endX = W + spacing * spans.length + 20;      // 終點:整串飄出右邊界
+  const dist = endX - startX;
+  const k = (2 * Math.PI * 1.5) / dist;             // 全程約 1.5 個波
+  const waveY = (x) => baseY + amp * Math.sin(k * (x - startX) - Math.PI / 2); // 起點在波峰(字先高後下沉)
+  const DUR = 2600;
+  let t0 = null;
+  const step = (ts) => {
+    if (!t0) t0 = ts;
+    const p = (ts - t0) / DUR;
+    if (p >= 1) { el.hidden = true; return; }
+    const head = startX + dist * p;                  // 領頭字(達,最右)目前的 x
+    el.style.opacity = p > .82 ? (1 - p) / .18 : 1;  // 尾段淡出
+    for (let i = 0; i < spans.length; i++) {
+      const cx = head - (spans.length - 1 - i) * spacing; // 心在最左、達在最右(閱讀順序正確)
+      const s = spans[i].style;
+      s.position = 'absolute';
+      s.left = cx + 'px';
+      s.top = (waveY(cx) - fs / 2) + 'px';
+    }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+function showWish() {
+  try { history.replaceState(null, '', '#p=wish'); } catch (e) {}
+  $('#home-view').hidden = true; $('#trip-view').hidden = true; $('#wish-view').hidden = false;
+  startFountain();
+  loadWishBoard();
+  window.scrollTo(0, 0);
 }
 
 // ---------- 開啟行程 ----------
 async function openTrip(id, wantSheet) {
   const meta = homeTrips().find(t => t.id === id); if (!meta) { showHome(); return; }
   try { TRIP = await loadTrip(meta); } catch (e) { alert('讀取失敗:' + e.message); showHome(); return; }
-  $('#home-view').hidden = true; $('#trip-view').hidden = false;
+  stopFountain();
+  $('#home-view').hidden = true; $('#wish-view').hidden = true; $('#trip-view').hidden = false;
   $('#trip-head').innerHTML = `<span class="tn">${esc(TRIP.name)}</span>
     <span class="troute">${esc(TRIP.origin || '')} ✈ ${esc(TRIP.dest || '')}</span>
     <span class="tm">${esc(TRIP.dateRange || '')} · ${esc(TRIP.days || '')} 天</span>`;
   renderMap();
-  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出');
+  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '願望清單');
   let tabsHtml = names.map((n, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" data-s="${esc(n)}"><span class="ic">${ICONS[n] || '•'}</span><span class="lab">${esc(n)}</span></button>`).join('');
   tabsHtml += `<button class="tab" data-s="__exp__"><span class="ic">💵</span><span class="lab">支出</span></button>`;

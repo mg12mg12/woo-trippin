@@ -4,6 +4,21 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <title>Trippin · 行程規劃</title>
+<!-- 分頁 / 書籤 圖示 (favicon) -->
+<link rel="icon" href="image/favicon.ico" sizes="any"/>
+<link rel="icon" type="image/png" sizes="32x32" href="image/icon-32.png"/>
+<link rel="icon" type="image/png" sizes="16x16" href="image/icon-16.png"/>
+<link rel="apple-touch-icon" sizes="180x180" href="image/icon-180.png"/>
+<meta name="theme-color" content="#2f5a3a"/>
+<!-- 分享預覽 (Open Graph / Twitter) -->
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="Trippin · 行程規劃"/>
+<meta property="og:description" content="想去哪,就去哪 — 登機證風格的行程規劃"/>
+<meta property="og:image" content="image/icon-512.png"/>
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="Trippin · 行程規劃"/>
+<meta name="twitter:description" content="想去哪,就去哪 — 登機證風格的行程規劃"/>
+<meta name="twitter:image" content="image/icon-512.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet"/>
@@ -72,6 +87,7 @@
     </div>
     <nav class="menu-list">
       <button class="menu-item" id="menu-home">🏠 首頁</button>
+      <button class="menu-item" id="menu-wish">⛲ 功能許願池</button>
       <!-- 之後的選單項目往下加 -->
     </nav>
   </div>
@@ -109,13 +125,42 @@
       <img class="hero-img" id="hero-img" alt=""/>
       <div class="hero-txt">
         <h1>規劃你的旅程</h1>
-        <p>想加甚麼項目，就加甚麼項目，我試算表大哥說他都能做( ﾟ∀ﾟ) ﾉ</p>
+        <p>想加甚麼項目，就加甚麼項目，我試算表大哥說他都能做(๑•̀ω•́๑)ﾉ</p>
       </div>
     </div>
 
     <h2 class="sect-h">★ 你的旅程</h2>
     <div class="trail"><div id="passes" class="bubbles"></div></div>
     <p id="add-help" class="add-help" hidden></p>
+  </section>
+
+  <!-- 功能許願池 -->
+  <section id="wish-view" hidden>
+    <button class="back" id="wish-back">◀ 回首頁</button>
+    <div class="section-title">⛲ 功能許願池</div>
+    <div class="wishwrap">
+      <div id="fountain" class="fountain">
+        <div id="idle-dog" class="idle-dog" aria-hidden="true"></div>
+        <span id="wish-float" class="wish-float" hidden>心願已送達</span>
+        <!-- 之後的零件放這裡(position:absolute 疊在噴泉上) -->
+      </div>
+    </div>
+    <div class="wishform">
+      <input id="wish-input" maxlength="100" placeholder="想許什麼願?(必填)"/>
+      <button id="wish-btn" class="btn wish-btn" disabled>🪙 許願</button>
+    </div>
+    <div class="wishboard">
+      <div class="wb-title">★ 願望看板 ★</div>
+      <div class="wb-head">
+        <span class="wd">日期</span><span class="wc">內容</span><span class="wu">許願人</span><span class="ws">通過</span><span class="ws">完成</span>
+      </div>
+      <div id="wb-rows"></div>
+      <div class="wb-pager">
+        <button id="wb-prev" class="wb-pg" aria-label="上一頁">◀</button>
+        <span id="wb-info"></span>
+        <button id="wb-next" class="wb-pg" aria-label="下一頁">▶</button>
+      </div>
+    </div>
   </section>
 
   <!-- 行程內容 -->
