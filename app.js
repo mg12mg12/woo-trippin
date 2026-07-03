@@ -127,7 +127,7 @@ $('#menu-btn').onclick = openSide;
 $('#side-close').onclick = closeSide;
 $('#side-mask').onclick = closeSide;
 $('#menu-home').onclick = () => { closeSide(); if (guardDirty()) { showLoading(); showHome(); hideLoading(); } };
-$('#menu-wish').onclick = () => { closeSide(); if (guardDirty()) { showLoading(); showWish(); hideLoading(); } };
+$('#menu-wish').onclick = () => { closeSide(); if (guardDirty()) { showWish(); } };  // showWish 會自行管理 loading(等圖載完)
 $('#wish-back').onclick = () => { showLoading(); showHome(); hideLoading(); };
 $('#wish-input').oninput = () => { $('#wish-btn').disabled = !$('#wish-input').value.trim() || WISH_BUSY; };
 $('#wish-btn').onclick = async () => {
@@ -333,6 +333,20 @@ async function restoreFromHash() {
 
 // ---------- 功能許願池(噴泉 4x2 循環;小狗待機 4x2 循環/投幣 5x5 播一次)----------
 let WISH_TIMER = null, THROW_TIMER = null, DOG_THROWING = false;
+// 預先載入所有精靈圖並解碼,避免動畫開始時圖片還沒顯示(只做一次,之後走瀏覽器快取)
+let WISH_ASSETS_P = null;
+function preloadWishAssets() {
+  if (WISH_ASSETS_P) return WISH_ASSETS_P;
+  const files = ['image/fountain_spritesheet_4x2.png', 'image/dog_idle_4x2.png', 'image/throw_coins_no_well.png'];
+  WISH_ASSETS_P = Promise.all(files.map(src => new Promise(resolve => {
+    const img = new Image();
+    const done = () => resolve();
+    img.onload = () => { (img.decode ? img.decode() : Promise.resolve()).then(done, done); };
+    img.onerror = done;                 // 載入失敗也放行,避免卡住 loading
+    img.src = src;
+  })));
+  return WISH_ASSETS_P;
+}
 function startFountain() {
   stopFountain();
   const el = $('#fountain'), dog = $('#idle-dog');
@@ -412,7 +426,7 @@ function renderWishBoard() {
   const pages = Math.max(1, Math.ceil(list.length / 10));
   if (WISH_PAGE >= pages) WISH_PAGE = pages - 1;
   const rows = list.slice(WISH_PAGE * 10, WISH_PAGE * 10 + 10);
-  const stamp = v => String(v).trim() === '是' ? '<span class="wb-ok">✔</span>' : '<span class="wb-no">─</span>';
+  const stamp = v => { const t = String(v == null ? '' : v).trim(); return t ? `<span class="wb-ok">${esc(t)}</span>` : '<span class="wb-no">─</span>'; };  // 直接顯示格子內容(表情/文字),空的才 ─
   const short = s => (s || '').replace(/^\d{4}-/, '').slice(0, 11);   // 顯示 MM-DD HH:mm
   $('#wb-rows').innerHTML = rows.length ? rows.map(w => `
     <div class="wb-row"><span class="wb-pin"></span>
@@ -468,12 +482,14 @@ function floatWishText() {
   };
   requestAnimationFrame(step);
 }
-function showWish() {
+async function showWish() {
   try { history.replaceState(null, '', '#p=wish'); } catch (e) {}
   $('#home-view').hidden = true; $('#trip-view').hidden = true; $('#wish-view').hidden = false;
-  startFountain();
-  loadWishBoard();
   window.scrollTo(0, 0);
+  showLoading();
+  try { await preloadWishAssets(); }           // 等噴泉/小狗/投幣三張圖都載入解碼完
+  finally { startFountain(); hideLoading(); }   // 圖備妥才開始動畫、收掉 loading
+  loadWishBoard();                              // 看板資料另外載入,不擋動畫
 }
 
 // ---------- 開啟行程 ----------
