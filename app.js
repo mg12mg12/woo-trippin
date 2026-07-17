@@ -502,15 +502,17 @@ async function openTrip(id, wantSheet) {
     <span class="troute">${esc(TRIP.origin || '')} ✈ ${esc(TRIP.dest || '')}</span>
     <span class="tm">${esc(TRIP.dateRange || '')} · ${esc(TRIP.days || '')} 天</span>`;
   renderMap();
-  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '願望清單');
+  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '願望清單' && n !== '旅遊筆記');
   let tabsHtml = names.map((n, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" data-s="${esc(n)}"><span class="ic">${ICONS[n] || '•'}</span><span class="lab">${esc(n)}</span></button>`).join('');
   tabsHtml += `<button class="tab" data-s="__exp__"><span class="ic">💵</span><span class="lab">支出</span></button>`;
+  tabsHtml += `<button class="tab" data-s="__notes__"><span class="ic">📓</span><span class="lab">旅遊筆記</span></button>`;
   $('#sectionnav').innerHTML = tabsHtml;
   $('#sectionnav').querySelectorAll('.tab').forEach(t => t.onclick = () => selectSheet(t.dataset.s));
-  const target = (wantSheet && (names.indexOf(wantSheet) !== -1 || wantSheet === '__exp__')) ? wantSheet : names[0];
+  const target = (wantSheet && (names.indexOf(wantSheet) !== -1 || wantSheet === '__exp__' || wantSheet === '__notes__')) ? wantSheet : names[0];
   curSheet = target; setActiveTab(target); setHash(id, target);
   if (target === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
+  else if (target === '__notes__') { $('#toolbar').hidden = true; showLoading(); renderNotes().finally(hideLoading); }
   else { $('#toolbar').hidden = false; setMode('view'); }
 }
 function setActiveTab(name) { $('#sectionnav').querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.s === name)); }
@@ -518,6 +520,7 @@ function selectSheet(name) {
   if (!guardDirty()) return;
   curSheet = name; setActiveTab(name); setHash(TRIP && TRIP.id, name);
   if (name === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
+  else if (name === '__notes__') { $('#toolbar').hidden = true; showLoading(); renderNotes().finally(hideLoading); }
   else { $('#toolbar').hidden = false; showLoading(); setMode('view'); hideLoading(); }
 }
 
@@ -680,6 +683,266 @@ function drawExpChart() {
   const ctx = document.getElementById('expchart'); if (!ctx) return;
   EXPCHART = new Chart(ctx, { type: 'pie', data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#fff', borderWidth: 2 }] },
     options: { plugins: { legend: { position: 'bottom', labels: { font: { family: 'DotGothic16' } } } } } });
+}
+
+// ---------- 旅遊筆記(圖片存雲端硬碟,試算表記檔案ID)----------
+// 兩種檢視:mine=自己的旅行筆記(含私人,可新增/編輯/刪除) / public=大家的旅行筆記(所有人的公開筆記,只有自己的可編輯)
+let NOTES = [], NOTES_DESC = true, NOTE_IMGS = [], NOTE_BUSY = false, NOTES_SCOPE = 'mine', NOTE_EDIT = null;
+const NOTE_MAX = 10;
+const noteThumb = (x) => x.indexOf('data:') === 0 ? x : `https://drive.google.com/thumbnail?id=${encodeURIComponent(x)}&sz=w400`;
+const noteFull = (x) => x.indexOf('data:') === 0 ? x : `https://drive.google.com/thumbnail?id=${encodeURIComponent(x)}&sz=w1600`;
+function todayStr() { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
+
+// 上傳前先在瀏覽器壓縮:最長邊 1600px、JPEG 85%
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAXS = 1600, sc = Math.min(1, MAXS / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * sc)), h = Math.max(1, Math.round(img.height * sc));
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve({ name: file.name || 'photo.jpg', dataURL: cv.toDataURL('image/jpeg', 0.85) });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('無法讀取圖片:' + (file.name || ''))); };
+    img.src = url;
+  });
+}
+
+function devNotesAll() { try { return JSON.parse(LS.getItem('notes:' + TRIP.id)) || []; } catch (e) { return []; } }
+function devNotesSave(all) { LS.setItem('notes:' + TRIP.id, JSON.stringify(all)); }
+async function loadNotes() {
+  if (DEV) {
+    const all = devNotesAll().map(n => Object.assign({ mine: true, author: (USER && USER.email) || 'demo@local', isPublic: false }, n));
+    NOTES = NOTES_SCOPE === 'public' ? all.filter(n => n.isPublic) : all.filter(n => n.mine);
+    return;
+  }
+  const d = await apiPost('notes', { spreadsheetId: TRIP.spreadsheetId, scope: NOTES_SCOPE });
+  NOTES = d.items || [];
+}
+function sortedNotes() {
+  const list = NOTES.slice().sort((a, b) => {
+    const k = (a.date || '').localeCompare(b.date || '') || (a.updatedAt || '').localeCompare(b.updatedAt || '');
+    return NOTES_DESC ? -k : k;
+  });
+  return list;
+}
+async function renderNotes() {
+  NOTE_EDIT = null;
+  try { await loadNotes(); } catch (e) { $('#content').innerHTML = '<p class="muted">讀取筆記失敗:' + esc(e.message) + '</p>'; return; }
+  NOTE_IMGS = [];
+  drawNotes();
+}
+async function switchNoteScope(scope) {
+  if (NOTES_SCOPE === scope || NOTE_BUSY) return;
+  NOTES_SCOPE = scope;
+  showLoading();
+  try { await renderNotes(); } finally { hideLoading(); }
+}
+const noteAuthorName = (n) => n.mine ? '我' : esc(String(n.author || '').split('@')[0] || '旅伴');
+function noteCardHtml(n) {
+  if (NOTE_EDIT && NOTE_EDIT.id === n.id) return noteEditHtml(n);
+  const pub = n.isPublic ? '<span class="notepub is-pub">🌏 公開</span>' : '<span class="notepub">🔒 私人</span>';
+  return `
+    <div class="notecard${n.mine ? '' : ' other'}">
+      <div class="notehead">
+        <span class="notedate">${esc((n.date || '').replace(/^\d{4}-/, ''))}</span>
+        ${NOTES_SCOPE === 'public' ? `<span class="noteauthor" title="${esc(n.author || '')}">👤 ${noteAuthorName(n)}</span>` : ''}
+        ${n.title ? `<span class="notetitle">${esc(n.title)}</span>` : ''}
+        ${pub}
+        ${n.mine ? `<button class="noteedit-btn" data-nedit="${esc(n.id)}" title="編輯這篇筆記">✎ 編輯</button>
+        <button class="notedel" data-ndel="${esc(n.id)}" title="刪除這篇筆記">✕</button>` : ''}
+      </div>
+      ${n.text ? `<div class="notetext">${linkify(n.text)}</div>` : ''}
+      ${n.images && n.images.length ? `<div class="notepics">${n.images.map(im =>
+        `<button class="notepic" data-full="${esc(noteFull(im))}"><img src="${esc(noteThumb(im))}" loading="lazy" alt="筆記照片"/></button>`).join('')}</div>` : ''}
+    </div>`;
+}
+function noteEditHtml(n) {
+  return `
+    <div class="notecard editing">
+      <div class="noterow1">
+        <input id="ne-date" type="date" value="${esc(n.date || todayStr())}"/>
+        <input id="ne-title" maxlength="60" value="${esc(n.title || '')}" placeholder="標題"/>
+      </div>
+      <textarea id="ne-text" rows="3" maxlength="2000" placeholder="在金魚腦忘記之前記點筆記吧!">${esc(n.text || '')}</textarea>
+      <div class="notekeeps" id="ne-keeps">${NOTE_EDIT.keep.map((im, i) =>
+        `<span class="notepv"><img src="${esc(noteThumb(im))}" alt="照片"/><button data-kdel="${i}" title="移除這張照片">✕</button></span>`).join('')}${NOTE_EDIT.add.map((im, i) =>
+        `<span class="notepv new"><img src="${esc(im.dataURL)}" alt="${esc(im.name)}"/><button data-adel="${i}" title="移除">✕</button></span>`).join('')}</div>
+      <div class="noterow2">
+        <label class="notepick" for="ne-files">📷 ＋ 加照片</label>
+        <input id="ne-files" type="file" accept="image/*" multiple hidden/>
+        <label class="notetog"><input id="ne-pub" type="checkbox" ${n.isPublic ? 'checked' : ''}/> 🌏 公開給大家看</label>
+        <span class="notebtns">
+          <button id="ne-cancel" class="btn-ghost">取消</button>
+          <button id="ne-save" class="btn">儲存修改</button>
+        </span>
+      </div>
+      <p id="ne-status" class="muted small" hidden></p>
+    </div>`;
+}
+function drawNotes() {
+  const list = sortedNotes();
+  const mineView = NOTES_SCOPE === 'mine';
+  const form = mineView ? `
+    <div class="noteform">
+      <div class="noterow1">
+        <input id="n-date" type="date" value="${todayStr()}"/>
+        <input id="n-title" maxlength="60" placeholder="標題(例:LCK初體驗!)"/>
+      </div>
+      <textarea id="n-text" rows="3" maxlength="2000" placeholder="在金魚腦忘記之前記點筆記吧!"></textarea>
+      <div class="noterow2">
+        <label class="notepick" for="n-files">📷 ＋ 加照片(可多張)</label>
+        <input id="n-files" type="file" accept="image/*" multiple hidden/>
+        <div id="n-previews" class="notepreviews"></div>
+        <label class="notetog"><input id="n-pub" type="checkbox"/> 🌏 公開給大家看</label>
+        <button id="n-add" class="btn noteadd">✎ 記下來</button>
+      </div>
+      <p id="n-status" class="muted small" hidden></p>
+    </div>` : `<p class="notehint muted small">這裡是大家公開的筆記;想新增或修改,切回「👤 自己的旅行筆記」。你自己的公開筆記在這裡也能編輯。</p>`;
+  $('#content').innerHTML = `
+    <div class="section-title">📓 旅遊筆記 <span class="muted small">${mineView ? '(私人筆記只有你自己看得到)' : '(所有人的公開筆記)'}</span></div>
+    <div class="seg noteseg">
+      <button id="ns-mine" class="seg-btn ${mineView ? 'active' : ''}">👤 自己的旅行筆記</button>
+      <button id="ns-all" class="seg-btn ${mineView ? '' : 'active'}">🌏 大家的旅行筆記</button>
+    </div>
+    ${form}
+    <div class="notebar">
+      <span class="muted small">共 ${list.length} 篇</span>
+      <button id="n-sort" class="btn-ghost notesort">日期 ${NOTES_DESC ? '新 → 舊' : '舊 → 新'} ⇅</button>
+    </div>
+    ${list.map(noteCardHtml).join('') || `<p class="muted noteempty">${mineView ? '還沒有筆記,寫下這趟旅程的第一篇吧!' : '還沒有人公開筆記,當第一個分享的人!'}</p>`}`;
+  $('#ns-mine').onclick = () => switchNoteScope('mine');
+  $('#ns-all').onclick = () => switchNoteScope('public');
+  $('#n-sort').onclick = () => { NOTES_DESC = !NOTES_DESC; drawNotes(); };
+  if (mineView) {
+    $('#n-files').onchange = onPickNoteImgs;
+    $('#n-add').onclick = onAddNote;
+    drawNotePreviews();
+  }
+  $('#content').querySelectorAll('[data-ndel]').forEach(b => b.onclick = () => onDelNote(b.dataset.ndel));
+  $('#content').querySelectorAll('[data-nedit]').forEach(b => b.onclick = () => startNoteEdit(b.dataset.nedit));
+  $('#content').querySelectorAll('[data-full]').forEach(b => b.onclick = () => openNoteLightbox(b.dataset.full));
+  bindNoteEdit();
+}
+// ---- 編輯自己的筆記(兩種檢視都可,但只限自己的)----
+function startNoteEdit(id) {
+  const n = NOTES.find(x => x.id === id);
+  if (!n || !n.mine || NOTE_BUSY) return;
+  NOTE_EDIT = { id, keep: (n.images || []).slice(), add: [] };
+  drawNotes();
+}
+function bindNoteEdit() {
+  if (!NOTE_EDIT) return;
+  const host = $('#content');
+  host.querySelectorAll('[data-kdel]').forEach(b => b.onclick = () => { NOTE_EDIT.keep.splice(+b.dataset.kdel, 1); drawNotes(); });
+  host.querySelectorAll('[data-adel]').forEach(b => b.onclick = () => { NOTE_EDIT.add.splice(+b.dataset.adel, 1); drawNotes(); });
+  const files = $('#ne-files');
+  if (files) files.onchange = async (e) => {
+    const fs = Array.from(e.target.files || []); e.target.value = '';
+    if (!fs.length) return;
+    if (NOTE_EDIT.keep.length + NOTE_EDIT.add.length + fs.length > NOTE_MAX) { alert('一篇筆記最多 ' + NOTE_MAX + ' 張照片'); return; }
+    // 先記住表單目前的值,重畫後回填
+    const cur = { date: $('#ne-date').value, title: $('#ne-title').value, text: $('#ne-text').value, pub: $('#ne-pub').checked };
+    try { for (const f of fs) NOTE_EDIT.add.push(await compressImage(f)); } catch (err) { alert(err.message); }
+    drawNotes();
+    $('#ne-date').value = cur.date; $('#ne-title').value = cur.title; $('#ne-text').value = cur.text; $('#ne-pub').checked = cur.pub;
+  };
+  const cancel = $('#ne-cancel'); if (cancel) cancel.onclick = () => { NOTE_EDIT = null; drawNotes(); };
+  const save = $('#ne-save'); if (save) save.onclick = onSaveNoteEdit;
+}
+async function onSaveNoteEdit() {
+  if (NOTE_BUSY || !NOTE_EDIT) return;
+  const id = NOTE_EDIT.id;
+  const date = $('#ne-date').value, title = $('#ne-title').value.trim(), text = $('#ne-text').value.trim();
+  const isPublic = $('#ne-pub').checked;
+  if (!date) { alert('請選日期'); return; }
+  if (!title && !text && !NOTE_EDIT.keep.length && !NOTE_EDIT.add.length) { alert('筆記是空的:寫點什麼或放張照片吧'); return; }
+  NOTE_BUSY = true; $('#ne-save').disabled = true;
+  const st = $('#ne-status'); if (st) { st.hidden = false; st.textContent = NOTE_EDIT.add.length ? '上傳中…(照片較多時要等一下)' : '儲存中…'; }
+  try {
+    const i = NOTES.findIndex(x => x.id === id);
+    if (DEV) {
+      const all = devNotesAll();
+      const j = all.findIndex(x => x.id === id);
+      const upd = { date, title, text, isPublic, images: NOTE_EDIT.keep.concat(NOTE_EDIT.add.map(im => im.dataURL)) };
+      if (j !== -1) { Object.assign(all[j], upd); devNotesSave(all); }
+      if (i !== -1) Object.assign(NOTES[i], upd);
+    } else {
+      const newImages = NOTE_EDIT.add.map(im => ({ name: im.name, mime: 'image/jpeg', dataB64: im.dataURL.split(',')[1] }));
+      const d = await apiPost('updateNote', { spreadsheetId: TRIP.spreadsheetId, noteId: id,
+        note: { date, title, text, isPublic, keepImages: NOTE_EDIT.keep, newImages } });
+      if (i !== -1) Object.assign(NOTES[i], { date, title, text, isPublic, images: d.images });
+    }
+    NOTE_EDIT = null;
+    if (NOTES_SCOPE === 'public' && !isPublic) NOTES.splice(i, 1);   // 在大家的檢視裡改成私人 → 從清單消失
+    drawNotes();
+  } catch (e) { alert('儲存失敗:' + e.message); const b = $('#ne-save'); if (b) b.disabled = false; const s2 = $('#ne-status'); if (s2) s2.hidden = true; }
+  finally { NOTE_BUSY = false; }
+}
+function drawNotePreviews() {
+  const host = $('#n-previews'); if (!host) return;
+  host.innerHTML = NOTE_IMGS.map((im, i) =>
+    `<span class="notepv"><img src="${esc(im.dataURL)}" alt="${esc(im.name)}"/><button data-pvdel="${i}" title="移除">✕</button></span>`).join('');
+  host.querySelectorAll('[data-pvdel]').forEach(b => b.onclick = () => { NOTE_IMGS.splice(+b.dataset.pvdel, 1); drawNotePreviews(); });
+}
+async function onPickNoteImgs(e) {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  if (!files.length) return;
+  if (NOTE_IMGS.length + files.length > NOTE_MAX) { alert('一篇筆記最多 ' + NOTE_MAX + ' 張照片'); return; }
+  noteStatus('照片壓縮中…');
+  try {
+    for (const f of files) NOTE_IMGS.push(await compressImage(f));
+    noteStatus('');
+  } catch (err) { noteStatus(''); alert(err.message); }
+  drawNotePreviews();
+}
+function noteStatus(t) { const el = $('#n-status'); if (el) { el.hidden = !t; el.textContent = t; } }
+async function onAddNote() {
+  if (NOTE_BUSY) return;
+  const date = $('#n-date').value, title = $('#n-title').value.trim(), text = $('#n-text').value.trim();
+  const isPublic = $('#n-pub').checked;
+  if (!date) { alert('請選日期'); return; }
+  if (!title && !text && !NOTE_IMGS.length) { alert('筆記是空的:寫點什麼或放張照片吧'); return; }
+  NOTE_BUSY = true; $('#n-add').disabled = true;
+  noteStatus(NOTE_IMGS.length ? '上傳中…(照片較多時要等一下)' : '儲存中…');
+  try {
+    const base = { date, title, text, isPublic, mine: true, author: (USER && USER.email) || '', updatedAt: todayStr() };
+    if (DEV) {
+      const item = Object.assign({ id: 'n' + Date.now(), images: NOTE_IMGS.map(im => im.dataURL) }, base);
+      const all = devNotesAll(); all.push(item); devNotesSave(all);
+      NOTES.push(item);
+    } else {
+      const imgs = NOTE_IMGS.map(im => ({ name: im.name, mime: 'image/jpeg', dataB64: im.dataURL.split(',')[1] }));
+      const d = await apiPost('addNote', { spreadsheetId: TRIP.spreadsheetId, note: { date, title, text, isPublic, images: imgs } });
+      NOTES.push(Object.assign({ id: d.id, images: d.images }, base));
+    }
+    NOTE_IMGS = [];
+    drawNotes();
+  } catch (e) { alert('儲存失敗:' + e.message); }
+  finally { NOTE_BUSY = false; const b = $('#n-add'); if (b) b.disabled = false; noteStatus(''); }
+}
+async function onDelNote(id) {
+  const n = NOTES.find(x => x.id === id);
+  if (!n || !n.mine) return;
+  if (!confirm('確定刪除這篇筆記?照片也會一起刪除。')) return;
+  const i = NOTES.findIndex(x => x.id === id); if (i === -1) return;
+  const removed = NOTES.splice(i, 1)[0];
+  try {
+    if (DEV) { devNotesSave(devNotesAll().filter(x => x.id !== id)); }
+    else await apiPost('deleteNote', { spreadsheetId: TRIP.spreadsheetId, noteId: id });
+  } catch (e) { alert('刪除失敗:' + e.message); NOTES.splice(i, 0, removed); }
+  drawNotes();
+}
+function openNoteLightbox(src) {
+  const ov = document.createElement('div');
+  ov.className = 'notelight';
+  ov.innerHTML = `<img src="${esc(src)}" alt="筆記照片"/><span class="notelight-x">✕ 點一下關閉</span>`;
+  ov.onclick = () => ov.remove();
+  document.body.appendChild(ov);
 }
 
 function renderView() {

@@ -316,3 +316,60 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .expcat-row .camt{font-variant-numeric:tabular-nums}
 .expcat-row .cpct{font-family:var(--px);font-size:10px;color:var(--green-d);width:44px;text-align:right}
 .fly2 .fly-load{position:absolute;left:0;right:0;bottom:14%;text-align:center;font-family:var(--px);font-size:12px;color:#fff;opacity:0;transition:opacity .3s;text-shadow:2px 2px 0 rgba(0,0,0,.2)}
+
+/* ---------- 旅遊筆記 ---------- */
+.noteform{background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:14px;margin-bottom:14px}
+.noterow1{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.noteform input,.noteform textarea{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink)}
+.noteform input:focus,.noteform textarea:focus{outline:2px solid var(--gold);outline-offset:-2px}
+#n-date{flex:0 0 150px}
+#n-title{flex:1;min-width:150px}
+#n-text{width:100%;box-sizing:border-box;resize:vertical}
+.noterow2{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-top:8px}
+.notepick{border:3px dashed var(--line);background:#fff;color:var(--green-d);padding:8px 14px;font-size:13px;cursor:pointer;user-select:none}
+.notepick:hover{background:var(--green-l)}
+.notepreviews{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0}
+.notepv{position:relative;width:52px;height:52px;border:2px solid var(--line);box-shadow:2px 2px 0 var(--shadow);overflow:hidden;background:var(--green-l)}
+.notepv img{width:100%;height:100%;object-fit:cover;display:block}
+.notepv button{position:absolute;top:0;right:0;border:0;background:rgba(44,59,51,.75);color:#fff;font-size:10px;line-height:1;padding:3px 4px;cursor:pointer}
+.noteadd{margin-left:auto}
+.notebar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px}
+.notesort{font-size:12px;padding:5px 10px}
+.notecard{background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:13px 14px;margin-bottom:12px}
+.notehead{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.notedate{font-family:var(--px);font-size:10px;background:var(--green);border:2px solid var(--line);padding:4px 7px;color:#fff;text-shadow:1px 1px 0 var(--line);white-space:nowrap}
+.notetitle{font-size:15px;color:var(--green-d);word-break:break-word}
+.notedel{margin-left:auto;border:0;background:none;color:var(--hint);font-size:13px;cursor:pointer;padding:2px 4px}
+.notedel:hover{color:var(--rose)}
+.notetext{font-size:13px;margin:8px 0 2px;white-space:pre-wrap;word-break:break-word}
+.notepics{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.notepic{padding:0;border:2px solid var(--line);box-shadow:2px 2px 0 var(--shadow);background:var(--green-l);width:96px;height:72px;overflow:hidden;cursor:zoom-in}
+.notepic img{width:100%;height:100%;object-fit:cover;display:block}
+.notepic:hover{transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--shadow)}
+.noteempty{background:var(--panel);border:2px dashed var(--line);padding:18px;text-align:center}
+.notelight{position:fixed;inset:0;z-index:95;background:rgba(44,59,51,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:20px;flex-direction:column;gap:12px}
+.notelight img{max-width:min(92vw,1100px);max-height:82vh;border:3px solid #fff;box-shadow:6px 6px 0 rgba(0,0,0,.35);image-rendering:auto}
+.notelight-x{font-family:var(--px);font-size:10px;color:#fff}
+
+/* 旅遊筆記:公開/私人 + 兩種檢視 + 卡片內編輯 */
+.noteseg{margin-bottom:14px}
+.notehint{background:var(--panel);border:2px dashed var(--line);padding:10px 14px;margin:0 0 14px}
+.notetog{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);cursor:pointer;user-select:none;padding:8px 0}
+.notetog input{accent-color:var(--green-d);width:16px;height:16px;cursor:pointer}
+.notepub{font-size:11px;border:1px solid var(--line);padding:2px 8px;background:var(--green-l);color:var(--muted);white-space:nowrap}
+.notepub.is-pub{background:var(--gold);color:var(--ink)}
+.noteauthor{font-size:12px;border:1px solid var(--line);padding:2px 8px;background:#fff;color:var(--green-d);white-space:nowrap}
+.noteedit-btn{margin-left:auto;border:2px solid var(--line);background:#fff;color:var(--green-d);font-family:var(--cjk);font-size:12px;cursor:pointer;padding:3px 9px;box-shadow:2px 2px 0 var(--shadow)}
+.noteedit-btn:hover{background:var(--green-l)}
+.noteedit-btn:active{transform:translate(2px,2px);box-shadow:0 0 0 var(--shadow)}
+.notehead .noteedit-btn + .notedel{margin-left:0}
+.notecard.other{border-style:solid;background:#fdfefd}
+.notecard.editing{outline:3px solid var(--gold);outline-offset:2px}
+.notecard.editing input,.notecard.editing textarea{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink)}
+.notecard.editing input:focus,.notecard.editing textarea:focus{outline:2px solid var(--gold);outline-offset:-2px}
+.notecard.editing #ne-date{flex:0 0 150px}
+.notecard.editing #ne-title{flex:1;min-width:150px}
+.notecard.editing #ne-text{width:100%;box-sizing:border-box;resize:vertical;margin-top:8px}
+.notekeeps{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.notepv.new{outline:2px solid var(--gold)}
+.notebtns{margin-left:auto;display:inline-flex;gap:8px}
