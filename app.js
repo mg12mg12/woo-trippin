@@ -55,8 +55,14 @@ if (DEV) $('#env-badge').hidden = false;
 // ---------- 側邊欄 + 頭像 ----------
 // 依帳號固定配一隻小動物(email 雜湊 → 清單),頭像佔位與筆記作者標籤共用
 const ANIMALS = ['🐶', '🐱', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🐮', '🐷', '🐸', '🐹', '🐤', '🐧', '🦉', '🐿️'];
+// 指定名單:想固定誰用哪個圖示,在這裡加一行「'email(小寫)': '圖示'」;沒列的帳號自動從上面清單配
+const ANIMAL_OVERRIDES = {
+  'a20819z@gmail.com': '🦄',
+  // 'leelin36942@gmail.com': '🐶',
+};
 function animalOf(email) {
   const s = String(email || '').toLowerCase();
+  if (ANIMAL_OVERRIDES[s]) return ANIMAL_OVERRIDES[s];
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return ANIMALS[h % ANIMALS.length];
