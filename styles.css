@@ -115,7 +115,7 @@ img,.orb svg{image-rendering:pixelated}
 .trip-head .tm{font-family:var(--px);font-size:10px;color:var(--muted)}
 
 /* 地圖(像素粗框)*/
-.tripmap{height:380px;border:2px solid var(--line);box-shadow:4px 4px 0 var(--shadow);overflow:hidden;margin-bottom:20px;background:#cfe0d6}
+.tripmap{height:380px;border:2px solid var(--line);box-shadow:4px 4px 0 var(--shadow);overflow:hidden;margin-bottom:20px;background:#cfe0d6;position:relative;z-index:0;isolation:isolate}
 .leaflet-container{font-family:var(--cjk)}
 
 /* 分類 tabs(像素方塊磚)*/

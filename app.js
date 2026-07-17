@@ -53,9 +53,18 @@ const PINS = {
 if (DEV) $('#env-badge').hidden = false;
 
 // ---------- 側邊欄 + 頭像 ----------
+// 依帳號固定配一隻小動物(email 雜湊 → 清單),頭像佔位與筆記作者標籤共用
+const ANIMALS = ['🐶', '🐱', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🐮', '🐷', '🐸', '🐹', '🐤', '🐧', '🦉', '🐿️'];
+function animalOf(email) {
+  const s = String(email || '').toLowerCase();
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return ANIMALS[h % ANIMALS.length];
+}
 function avatarKey() { return 'avatar:' + ((USER && USER.email) || 'demo'); }
 function applyAvatar() {
   const img = $('#avatar-img'), ph = $('#avatar-ph');
+  ph.textContent = animalOf((USER && USER.email) || 'demo');   // 沒選頭像時,顯示自己帳號的小動物
   const f = LS.getItem(avatarKey());
   if (f) {
     img.onerror = () => { img.hidden = true; ph.hidden = false; };
@@ -749,7 +758,7 @@ function noteCardHtml(n) {
     <div class="notecard${n.mine ? '' : ' other'}">
       <div class="notehead">
         <span class="notedate">${esc((n.date || '').replace(/^\d{4}-/, ''))}</span>
-        ${NOTES_SCOPE === 'public' ? `<span class="noteauthor" title="${esc(n.author || '')}">👤 ${noteAuthorName(n)}</span>` : ''}
+        ${NOTES_SCOPE === 'public' ? `<span class="noteauthor" title="${esc(n.author || '')}">${animalOf(n.author)} ${noteAuthorName(n)}</span>` : ''}
         ${n.title ? `<span class="notetitle">${esc(n.title)}</span>` : ''}
         ${pub}
         ${n.mine ? `<button class="noteedit-btn" data-nedit="${esc(n.id)}" title="編輯這篇筆記">✎ 編輯</button>
@@ -801,11 +810,11 @@ function drawNotes() {
         <button id="n-add" class="btn noteadd">✎ 記下來</button>
       </div>
       <p id="n-status" class="muted small" hidden></p>
-    </div>` : `<p class="notehint muted small">這裡是大家公開的筆記;想新增或修改,切回「👤 自己的旅行筆記」。你自己的公開筆記在這裡也能編輯。</p>`;
+    </div>` : `<p class="notehint muted small">這裡是大家公開的筆記;想新增或修改,切回「${animalOf((USER && USER.email) || '')} 自己的旅行筆記」。你自己的公開筆記在這裡也能編輯。</p>`;
   $('#content').innerHTML = `
     <div class="section-title">📓 旅遊筆記 <span class="muted small">${mineView ? '(私人筆記只有你自己看得到)' : '(所有人的公開筆記)'}</span></div>
     <div class="seg noteseg">
-      <button id="ns-mine" class="seg-btn ${mineView ? 'active' : ''}">👤 自己的旅行筆記</button>
+      <button id="ns-mine" class="seg-btn ${mineView ? 'active' : ''}">${animalOf((USER && USER.email) || '')} 自己的旅行筆記</button>
       <button id="ns-all" class="seg-btn ${mineView ? '' : 'active'}">🌏 大家的旅行筆記</button>
     </div>
     ${form}
