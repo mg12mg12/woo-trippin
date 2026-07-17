@@ -373,3 +373,46 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .notekeeps{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .notepv.new{outline:2px solid var(--gold)}
 .notebtns{margin-left:auto;display:inline-flex;gap:8px}
+
+/* ---------- 行李清單 + 通知信 ---------- */
+.packnotify{float:right;font-size:12px;padding:5px 10px}
+.packwrap{max-width:440px;margin:0 auto}
+.packrings{display:flex;justify-content:center;gap:14px;position:relative;z-index:2;margin-bottom:-11px}
+.packring{width:13px;height:24px;border:3px solid #5f8474;border-radius:7px;background:linear-gradient(#fff,#cfe0d6);box-shadow:2px 2px 0 rgba(20,53,42,.25)}
+.packpad{background:#fff;background-image:linear-gradient(rgba(70,197,161,.14) 1px,transparent 1px),linear-gradient(90deg,rgba(70,197,161,.14) 1px,transparent 1px);background-size:16px 16px;border:2px solid var(--line);box-shadow:5px 6px 0 var(--shadow);padding:24px 18px 16px;transform:rotate(-.6deg)}
+@media(max-width:600px){.packpad{transform:none}}
+.packhead{display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--line);padding-bottom:8px;margin-bottom:2px}
+.packtitle{font-size:16px;color:var(--green-d);white-space:nowrap}
+.packcount{font-family:var(--px);font-size:9px;color:var(--green-d);white-space:nowrap}
+.padbar{flex:1;height:8px;border:2px solid var(--line);background:#fff;position:relative;min-width:40px;align-self:center}
+.padbar-fill{position:absolute;inset:0;background:var(--green);transition:width .25s}
+.packlbl{font-size:12px;color:var(--muted);white-space:nowrap}
+.packrow{display:flex;align-items:center;gap:8px;border-bottom:2px dashed #9fd0bd;padding:7px 2px}
+.packchk{display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;user-select:none;position:relative}
+.packchk input{position:absolute;opacity:0;width:0;height:0}
+.packbox{width:17px;height:17px;flex:0 0 auto;border:2px solid var(--line);background:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:#fff;line-height:1}
+.packchk input:checked + .packbox{background:var(--green)}
+.packchk input:checked + .packbox::after{content:'✓'}
+.packchk input:focus-visible + .packbox{outline:2px solid var(--gold);outline-offset:1px}
+.packname{font-size:14px;word-break:break-word}
+.packrow.done .packname{text-decoration:line-through;color:#8aa094}
+.packdel{border:0;background:none;color:#c3d2ca;font-size:12px;cursor:pointer;padding:2px 5px;flex:0 0 auto}
+.packrow:hover .packdel,.packdel:focus{color:var(--rose)}
+.packempty{color:var(--muted);text-align:center;padding:18px 4px;border-bottom:2px dashed #9fd0bd;margin:0;font-size:13px}
+.packadd{display:flex;align-items:center;gap:10px;padding:9px 2px 2px}
+.packbox.ghost{border-style:dashed;border-color:#9fd0bd}
+.packadd input{flex:1;min-width:0;font-family:var(--cjk);font-size:14px;color:var(--ink);background:transparent;border:0;border-bottom:2px dashed #9fd0bd;padding:4px 2px}
+.packadd input:focus{outline:none;border-bottom-color:var(--green-d)}
+.packadd input::placeholder{color:var(--hint)}
+.packplus{padding:4px 12px;font-size:14px}
+.packhint{margin-top:14px;text-align:center}
+.nmodal{position:fixed;inset:0;background:rgba(44,59,51,.5);z-index:90;display:flex;align-items:center;justify-content:center;padding:16px}
+.nmodal-card{background:var(--panel);border:2px solid var(--line);box-shadow:4px 4px 0 var(--shadow);padding:16px;max-width:440px;width:100%;max-height:85vh;overflow:auto}
+.nmodal-title{font-size:15px;color:var(--green-d);margin-bottom:12px}
+.nmodal-sec{font-size:13px;margin-bottom:4px}
+.nm-all{border-bottom:2px dashed var(--shadow);padding-bottom:6px;margin-bottom:4px;display:flex}
+.nmodal-list{display:flex;flex-direction:column;gap:2px;margin-bottom:10px;max-height:180px;overflow:auto}
+.nmodal-list .notetog{padding:4px 0}
+.nmodal-card input[type=text],.nmodal-card input:not([type=checkbox]),.nmodal-card textarea{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink);width:100%;box-sizing:border-box;margin-bottom:8px}
+.nmodal-card input:focus,.nmodal-card textarea:focus{outline:2px solid var(--gold);outline-offset:-2px}
+.nmodal-btns{display:flex;justify-content:flex-end;gap:8px}

@@ -517,17 +517,19 @@ async function openTrip(id, wantSheet) {
     <span class="troute">${esc(TRIP.origin || '')} ✈ ${esc(TRIP.dest || '')}</span>
     <span class="tm">${esc(TRIP.dateRange || '')} · ${esc(TRIP.days || '')} 天</span>`;
   renderMap();
-  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '願望清單' && n !== '旅遊筆記');
+  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '願望清單' && n !== '旅遊筆記' && n !== '行李清單');
   let tabsHtml = names.map((n, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" data-s="${esc(n)}"><span class="ic">${ICONS[n] || '•'}</span><span class="lab">${esc(n)}</span></button>`).join('');
   tabsHtml += `<button class="tab" data-s="__exp__"><span class="ic">💵</span><span class="lab">支出</span></button>`;
   tabsHtml += `<button class="tab" data-s="__notes__"><span class="ic">📓</span><span class="lab">旅遊筆記</span></button>`;
+  tabsHtml += `<button class="tab" data-s="__pack__"><span class="ic">🧳</span><span class="lab">行李清單</span></button>`;
   $('#sectionnav').innerHTML = tabsHtml;
   $('#sectionnav').querySelectorAll('.tab').forEach(t => t.onclick = () => selectSheet(t.dataset.s));
-  const target = (wantSheet && (names.indexOf(wantSheet) !== -1 || wantSheet === '__exp__' || wantSheet === '__notes__')) ? wantSheet : names[0];
+  const target = (wantSheet && (names.indexOf(wantSheet) !== -1 || wantSheet === '__exp__' || wantSheet === '__notes__' || wantSheet === '__pack__')) ? wantSheet : names[0];
   curSheet = target; setActiveTab(target); setHash(id, target);
   if (target === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
   else if (target === '__notes__') { $('#toolbar').hidden = true; showLoading(); renderNotes().finally(hideLoading); }
+  else if (target === '__pack__') { $('#toolbar').hidden = true; showLoading(); renderPacking().finally(hideLoading); }
   else { $('#toolbar').hidden = false; setMode('view'); }
 }
 function setActiveTab(name) { $('#sectionnav').querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.s === name)); }
@@ -536,6 +538,7 @@ function selectSheet(name) {
   curSheet = name; setActiveTab(name); setHash(TRIP && TRIP.id, name);
   if (name === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
   else if (name === '__notes__') { $('#toolbar').hidden = true; showLoading(); renderNotes().finally(hideLoading); }
+  else if (name === '__pack__') { $('#toolbar').hidden = true; showLoading(); renderPacking().finally(hideLoading); }
   else { $('#toolbar').hidden = false; showLoading(); setMode('view'); hideLoading(); }
 }
 
@@ -958,6 +961,156 @@ function openNoteLightbox(src) {
   ov.innerHTML = `<img src="${esc(src)}" alt="筆記照片"/><span class="notelight-x">✕ 點一下關閉</span>`;
   ov.onclick = () => ov.remove();
   document.body.appendChild(ov);
+}
+
+// ---------- 行李清單(依帳號隔離;打勾=已準備,出發前一天未勾會寄信提醒)----------
+let PACK = [], PACK_BUSY = false;
+const NOTIFY_ADMINS_FE = ['a20819z@gmail.com'];   // 顯示「寄通知信」按鈕的帳號(後端也會驗證)
+const isNotifyAdminFE = () => DEV || NOTIFY_ADMINS_FE.indexOf(((USER && USER.email) || '').toLowerCase()) !== -1;
+
+function sharedPackDefaults() {   // 從「行李清單」分頁抓帳號=「共用」的預設項目
+  const sh = TRIP.sheets && TRIP.sheets['行李清單'];
+  if (!sh || !sh.headers) return [];
+  const cE = sh.headers.indexOf('帳號'), cN = sh.headers.indexOf('物品');
+  if (cE === -1 || cN === -1) return [];
+  return (sh.rows || []).filter(r => String(r[cE] || '') === '共用' && String(r[cN] || '').trim())
+    .map(r => ({ name: String(r[cN]), done: false }));
+}
+async function loadPacking() {
+  if (DEV) {
+    const raw = LS.getItem('pack:' + TRIP.id);
+    if (raw === null) { PACK = sharedPackDefaults(); return; }   // 沒存過 → 用共用預設清單起手
+    try { PACK = JSON.parse(raw) || []; } catch (e) { PACK = []; }
+    return;
+  }
+  const d = await apiPost('packing', { spreadsheetId: TRIP.spreadsheetId });
+  PACK = d.items || [];
+}
+async function persistPacking() {
+  if (DEV) { LS.setItem('pack:' + TRIP.id, JSON.stringify(PACK)); return; }
+  await apiPost('savePacking', { spreadsheetId: TRIP.spreadsheetId, items: PACK });
+}
+async function renderPacking() {
+  try { await loadPacking(); } catch (e) { $('#content').innerHTML = '<p class="muted">讀取行李清單失敗:' + esc(e.message) + '</p>'; return; }
+  drawPacking();
+}
+function drawPacking() {
+  const total = PACK.length, done = PACK.filter(p => p.done).length;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  const rows = PACK.map((p, i) => `
+    <div class="packrow ${p.done ? 'done' : ''}">
+      <label class="packchk"><input type="checkbox" data-ptog="${i}" ${p.done ? 'checked' : ''}/><span class="packbox"></span><span class="packname">${esc(p.name)}</span></label>
+      <button class="packdel" data-pdel="${i}" title="刪除">✕</button>
+    </div>`).join('');
+  $('#content').innerHTML = `
+    <div class="section-title">🧳 行李清單 <span class="muted small">(只有你自己看得到)</span>
+      ${isNotifyAdminFE() ? '<button id="p-notify" class="btn-ghost packnotify">📮 寄通知信</button>' : ''}
+    </div>
+    <div class="packwrap">
+      <div class="packrings">${'<span class="packring"></span>'.repeat(8)}</div>
+      <div class="packpad">
+        <div class="packhead">
+          <span class="packtitle">🧳 行李清單</span>
+          <span class="packcount">${done}/${total}</span>
+          <span class="padbar"><span class="padbar-fill" style="width:${pct}%"></span></span>
+          <span class="packlbl">已準備${total && done === total ? ' 🎉' : ''}</span>
+        </div>
+        ${rows || '<p class="packempty">本子還是空的,把要帶的東西寫上來吧!<br/><span class="small">出發前一天還沒打勾的項目,會寄Email轟炸你 📨。</span></p>'}
+        <div class="packadd">
+          <span class="packbox ghost"></span>
+          <input id="p-name" maxlength="60" placeholder="✎ 在這行寫下要帶的東西…"/>
+          <button id="p-add" class="btn packplus" title="加入">＋</button>
+        </div>
+      </div>
+    </div>
+    <p class="muted small packhint">☑ 打勾=已放進行李;出發前一天早上會自動檢查,未打勾的項目前一天我就會寄信轟炸了(「 ゜Д゜)「📨。</p>`;
+  $('#p-add').onclick = onAddPack;
+  $('#p-name').onkeydown = (e) => { if (e.key === 'Enter') onAddPack(); };
+  $('#content').querySelectorAll('[data-ptog]').forEach(b => b.onchange = () => onTogglePack(+b.dataset.ptog));
+  $('#content').querySelectorAll('[data-pdel]').forEach(b => b.onclick = () => onDelPack(+b.dataset.pdel));
+  const nb = $('#p-notify'); if (nb) nb.onclick = openNotifyModal;
+}
+async function packSave(revert) {
+  if (PACK_BUSY) return false;
+  PACK_BUSY = true;
+  try { await persistPacking(); return true; }
+  catch (e) { alert('儲存失敗:' + e.message); if (revert) revert(); return false; }
+  finally { PACK_BUSY = false; }
+}
+async function onAddPack() {
+  const inp = $('#p-name'), name = inp.value.trim();
+  if (!name) return;
+  PACK.push({ name, done: false });
+  inp.value = '';
+  await packSave(() => PACK.pop());
+  drawPacking();
+}
+async function onTogglePack(i) {
+  if (!PACK[i]) return;
+  PACK[i].done = !PACK[i].done;
+  await packSave(() => { PACK[i].done = !PACK[i].done; });
+  drawPacking();
+}
+async function onDelPack(i) {
+  if (!PACK[i]) return;
+  if (!confirm('刪除「' + PACK[i].name + '」?')) return;
+  const removed = PACK.splice(i, 1)[0];
+  await packSave(() => PACK.splice(i, 0, removed));
+  drawPacking();
+}
+
+// ---------- 管理員:寄通知信(收件人=登入白名單,勾選寄送)----------
+async function openNotifyModal() {
+  let emails = [];
+  showLoading();
+  try {
+    if (DEV) emails = [((USER && USER.email) || 'demo@local'), 'a20819z@gmail.com', 'leelin36942@gmail.com'];
+    else { const d = await apiPost('notifyEmails', { spreadsheetId: TRIP.spreadsheetId }); emails = d.emails || []; }
+  } catch (e) { hideLoading(); alert('讀取名單失敗:' + e.message); return; }
+  hideLoading();
+  const ov = document.createElement('div');
+  ov.className = 'nmodal';
+  ov.innerHTML = `
+    <div class="nmodal-card">
+      <div class="nmodal-title">📮 寄通知信</div>
+      <div class="nmodal-sec">收件人(白名單全員):</div>
+      <label class="notetog nm-all"><input id="nm-all" type="checkbox"/> 全選</label>
+      <div class="nmodal-list">${emails.map((em, i) =>
+        `<label class="notetog"><input type="checkbox" class="nm-to" value="${esc(em)}"/> ${animalOf(em)} ${esc(em)}</label>`).join('')}</div>
+      <div class="nmodal-sec">測試寄送(白名單以外,逗號分隔,最多5個):</div>
+      <input id="nm-extra" placeholder="例:test1@gmail.com, test2@gmail.com"/>
+      <input id="nm-subject" maxlength="60" placeholder="主旨(預設:旅程通知)"/>
+      <textarea id="nm-msg" rows="5" maxlength="2000" placeholder="要通知大家什麼?"></textarea>
+      <div class="nmodal-btns">
+        <button id="nm-cancel" class="btn-ghost">取消</button>
+        <button id="nm-send" class="btn">寄出</button>
+      </div>
+      <p id="nm-status" class="muted small" hidden></p>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.querySelector('#nm-cancel').onclick = () => ov.remove();
+  ov.querySelector('#nm-all').onchange = (e) => ov.querySelectorAll('.nm-to').forEach(c => { c.checked = e.target.checked; });
+  ov.querySelector('#nm-send').onclick = async () => {
+    const to = Array.from(ov.querySelectorAll('.nm-to:checked')).map(c => c.value);
+    const extra = ov.querySelector('#nm-extra').value.split(/[,;、\s]+/).map(s => s.trim()).filter(Boolean);
+    const subject = ov.querySelector('#nm-subject').value.trim() || '旅程通知';
+    const message = ov.querySelector('#nm-msg').value.trim();
+    if (!to.length && !extra.length) { alert('請至少勾選或輸入一個收件人'); return; }
+    if (extra.length > 5) { alert('測試收件人最多 5 個'); return; }
+    const bad = extra.find(t => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t));
+    if (bad) { alert('Email 格式不對:' + bad); return; }
+    if (!message) { alert('通知內容是空的'); return; }
+    const total = to.length + extra.filter(t => to.indexOf(t.toLowerCase()) === -1).length;
+    const btn = ov.querySelector('#nm-send'), st = ov.querySelector('#nm-status');
+    btn.disabled = true; st.hidden = false; st.textContent = '寄送中…';
+    try {
+      if (DEV) await new Promise(r => setTimeout(r, 600));
+      else await apiPost('sendNotify', { spreadsheetId: TRIP.spreadsheetId, to, extra, subject, message });
+      st.textContent = '已寄出給 ' + total + ' 人!';
+      setTimeout(() => ov.remove(), 900);
+    } catch (e) { btn.disabled = false; st.hidden = true; alert('寄送失敗:' + e.message); }
+  };
 }
 
 function renderView() {
