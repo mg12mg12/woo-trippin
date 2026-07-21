@@ -12,6 +12,11 @@ function linkify(t) {
   while ((m = re.exec(t))) { out += esc(t.slice(last, m.index)); out += `<a href="${m[1].replace(/"/g, '%22')}" target="_blank" rel="noopener">開啟 ↗</a>`; last = m.index + m[1].length; }
   out += esc(t.slice(last)); return out;
 }
+// 把 [[img:檔名]] 標記換成圖片(檔案放 web/image/ticket/);沒放圖時 onerror 顯示佔位框,不會壞版。點圖放大。
+function richText(t) {
+  return linkify(t).replace(/\[\[img:([\w.\-]+)\]\]/g, (m, f) =>
+    `<img class="inlineimg" src="image/ticket/${f}" alt="說明圖" loading="lazy" onclick="openNoteLightbox('image/ticket/${f}')" onerror="this.classList.add('imgmiss')"/>`);
+}
 const ICONS = { '每日行程': '📅', '匯率': '💱', '住宿推薦': '🏨', '美食建議': '🍜', '雨天避暑方案': '🌧️', '預算開銷': '💰', 'LCK彈性方案': '🎮', '交通指南': '🚇', '出發前預約清單': '✅', '景點重點資訊': '📌' };
 const THEMES = [
   { light: '#d9f3ec', base: '#19b89a', dark: '#0c7d70', sun: '#ffc857' },
@@ -1059,6 +1064,98 @@ async function onDelPack(i) {
   drawPacking();
 }
 
+// 載入可寄送名單(管理員)
+async function loadNotifyEmails() {
+  if (DEV) return [((USER && USER.email) || 'demo@local'), 'a20819z@gmail.com', 'leelin36942@gmail.com'];
+  const d = await apiPost('notifyEmails', { spreadsheetId: TRIP.spreadsheetId });
+  return d.emails || [];
+}
+// 收件人區塊(白名單勾選 + 全選 + 測試信箱),通知信/搶票說明共用
+function recipientBlockHtml(emails) {
+  return `
+      <div class="nmodal-sec">收件人(白名單全員):</div>
+      <label class="notetog nm-all"><input id="nm-all" type="checkbox"/> 全選</label>
+      <div class="nmodal-list">${emails.map(em =>
+        `<label class="notetog"><input type="checkbox" class="nm-to" value="${esc(em)}"/> ${animalOf(em)} ${esc(em)}</label>`).join('')}</div>
+      <div class="nmodal-sec">測試寄送(白名單以外,逗號分隔,最多5個):</div>
+      <input id="nm-extra" placeholder="例:test1@gmail.com, test2@gmail.com"/>`;
+}
+// 從收件人區塊收集並驗證;回傳 {to, extra, total} 或 null(驗證失敗已跳 alert)
+function collectRecipients(ov) {
+  const to = Array.from(ov.querySelectorAll('.nm-to:checked')).map(c => c.value);
+  const extra = ov.querySelector('#nm-extra').value.split(/[,;、\s]+/).map(s => s.trim()).filter(Boolean);
+  if (!to.length && !extra.length) { alert('請至少勾選或輸入一個收件人'); return null; }
+  if (extra.length > 5) { alert('測試收件人最多 5 個'); return null; }
+  const bad = extra.find(t => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t));
+  if (bad) { alert('Email 格式不對:' + bad); return null; }
+  const total = to.length + extra.filter(t => to.indexOf(t.toLowerCase()) === -1).length;
+  return { to, extra, total };
+}
+
+// ---------- 管理員:寄搶票說明(內建教學步驟 + 日期/時間/備註)----------
+const TICKET_STEPS =
+`〔開賣前〕
+· 售票平台Interpark Global;未開賣的場點「buy now」會顯示幾點開搶
+· 第一場07/27開賣;07/30那場可先拿來練手
+〔開賣當下〕
+· 人多會排隊,不用狂按,等系統自動排進去
+· 進場後輸入驗證碼(全大寫)
+〔選位〕
+· 先選上方General Seat(紫色/綠色常被搶完)
+· 選好座位區,下方兩個按鈕才會亮:左=輸入張數自動選位、右=自己手動選位
+· 自動選位可連續三次,三次後跳掉要再按一次
+〔釋票＆撿漏〕
+· 韓國15:00／台灣14:00開賣;不會整場釋票,03分、08分再點進去(有人15分才刷到)
+〔刷卡付款〕
+· 資料務必正確:Email、電話、護照號碼、刷卡卡號
+· 刷卡人姓名要與護照一致;電話格式 +886 9xxxxxxxx(去掉開頭0)`;
+async function openTicketModal() {
+  let emails = [];
+  showLoading();
+  try { emails = await loadNotifyEmails(); }
+  catch (e) { hideLoading(); alert('讀取名單失敗:' + e.message); return; }
+  hideLoading();
+  const ov = document.createElement('div');
+  ov.className = 'nmodal';
+  ov.innerHTML = `
+    <div class="nmodal-card">
+      <div class="nmodal-title">🎫 寄搶票說明</div>
+      <div class="nmodal-sec">搶票日期</div>
+      <input id="tk-date" type="date"/>
+      <div class="nmodal-sec">開賣時間</div>
+      <input id="tk-time" maxlength="40" placeholder="例:韓國16:00 / 台灣15:00"/>
+      <div class="nmodal-sec">其他備註(選填)</div>
+      <textarea id="tk-note" rows="3" maxlength="500" placeholder="例:記得先開好Interpark帳號、刷卡資料備妥"></textarea>
+      ${recipientBlockHtml(emails)}
+      <p class="muted small" style="margin:8px 0 0">📄 搶票步驟教學已內建,會自動附在信裡,不用重打。</p>
+      <div class="nmodal-btns">
+        <button id="nm-cancel" class="btn-ghost">取消</button>
+        <button id="nm-send" class="btn">寄出</button>
+      </div>
+      <p id="nm-status" class="muted small" hidden></p>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.querySelector('#nm-cancel').onclick = () => ov.remove();
+  ov.querySelector('#nm-all').onchange = (e) => ov.querySelectorAll('.nm-to').forEach(c => { c.checked = e.target.checked; });
+  ov.querySelector('#nm-send').onclick = async () => {
+    const rcpt = collectRecipients(ov); if (!rcpt) return;
+    const date = ov.querySelector('#tk-date').value, time = ov.querySelector('#tk-time').value.trim();
+    const note = ov.querySelector('#tk-note').value.trim();
+    if (!date && !time) { alert('請至少填搶票日期或開賣時間'); return; }
+    const head = [date ? '📅 搶票日期:' + date : '', time ? '⏰ 開賣時間:' + time : ''].filter(Boolean).join('\n');
+    const message = head + '\n\n' + TICKET_STEPS + (note ? '\n\n📌 備註:' + note : '');
+    const btn = ov.querySelector('#nm-send'), st = ov.querySelector('#nm-status');
+    btn.disabled = true; st.hidden = false; st.textContent = '寄送中…';
+    try {
+      if (DEV) await new Promise(r => setTimeout(r, 600));
+      else await apiPost('sendNotify', { spreadsheetId: TRIP.spreadsheetId, to: rcpt.to, extra: rcpt.extra, subject: 'LCK 搶票說明', message });
+      st.textContent = '已寄出給 ' + rcpt.total + ' 人!';
+      setTimeout(() => ov.remove(), 900);
+    } catch (e) { btn.disabled = false; st.hidden = true; alert('寄送失敗:' + e.message); }
+  };
+}
+
 // ---------- 管理員:寄通知信(收件人=登入白名單,勾選寄送)----------
 async function openNotifyModal() {
   let emails = [];
@@ -1092,22 +1189,16 @@ async function openNotifyModal() {
   ov.querySelector('#nm-cancel').onclick = () => ov.remove();
   ov.querySelector('#nm-all').onchange = (e) => ov.querySelectorAll('.nm-to').forEach(c => { c.checked = e.target.checked; });
   ov.querySelector('#nm-send').onclick = async () => {
-    const to = Array.from(ov.querySelectorAll('.nm-to:checked')).map(c => c.value);
-    const extra = ov.querySelector('#nm-extra').value.split(/[,;、\s]+/).map(s => s.trim()).filter(Boolean);
+    const rcpt = collectRecipients(ov); if (!rcpt) return;
     const subject = ov.querySelector('#nm-subject').value.trim() || '旅程通知';
     const message = ov.querySelector('#nm-msg').value.trim();
-    if (!to.length && !extra.length) { alert('請至少勾選或輸入一個收件人'); return; }
-    if (extra.length > 5) { alert('測試收件人最多 5 個'); return; }
-    const bad = extra.find(t => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t));
-    if (bad) { alert('Email 格式不對:' + bad); return; }
     if (!message) { alert('通知內容是空的'); return; }
-    const total = to.length + extra.filter(t => to.indexOf(t.toLowerCase()) === -1).length;
     const btn = ov.querySelector('#nm-send'), st = ov.querySelector('#nm-status');
     btn.disabled = true; st.hidden = false; st.textContent = '寄送中…';
     try {
       if (DEV) await new Promise(r => setTimeout(r, 600));
-      else await apiPost('sendNotify', { spreadsheetId: TRIP.spreadsheetId, to, extra, subject, message });
-      st.textContent = '已寄出給 ' + total + ' 人!';
+      else await apiPost('sendNotify', { spreadsheetId: TRIP.spreadsheetId, to: rcpt.to, extra: rcpt.extra, subject, message });
+      st.textContent = '已寄出給 ' + rcpt.total + ' 人!';
       setTimeout(() => ov.remove(), 900);
     } catch (e) { btn.disabled = false; st.hidden = true; alert('寄送失敗:' + e.message); }
   };
@@ -1115,8 +1206,12 @@ async function openNotifyModal() {
 
 function renderView() {
   const sh = TRIP.sheets[curSheet];
-  const title = `<div class="section-title">${ICONS[curSheet] || ''} ${esc(curSheet)}</div>`;
+  // LCK彈性方案:管理員可在此寄「搶票說明」通知信(右上角)
+  const btn = (curSheet === 'LCK彈性方案' && isNotifyAdminFE())
+    ? '<button id="tk-notify" class="btn-ghost packnotify">🎫 寄搶票說明</button>' : '';
+  const title = `<div class="section-title">${ICONS[curSheet] || ''} ${esc(curSheet)}${btn}</div>`;
   $('#content').innerHTML = title + (curSheet === '每日行程' ? renderTimeline(sh) : renderTable(sh));
+  const tk = $('#tk-notify'); if (tk) tk.onclick = openTicketModal;
 }
 function renderTimeline(sh) {
   const H = sh.headers, idx = (l, d) => { const i = H.indexOf(l); return i === -1 ? d : i; };
@@ -1148,18 +1243,44 @@ function renderTimeline(sh) {
 function renderTable(sh) {
   const all = [sh.headers].concat(sh.rows); let cols = 0;
   all.forEach(r => { for (let i = 0; i < r.length; i++) if ((r[i] ?? '') !== '') cols = Math.max(cols, i + 1); });
-  const headers = sh.headers.slice(0, cols); const notes = [], bodyRows = [];
+  const headers = sh.headers.slice(0, cols); let notes = [], bodyRows = [];
   sh.rows.forEach(r => {
     const filled = r.slice(0, cols).filter(c => (c ?? '') !== '');
     if (filled.length <= 1) { if (filled.length === 1) notes.push(filled[0]); } else bodyRows.push(r.slice(0, cols));
   });
+  // 把「搶票教學」那段(從該標題列到最後)抽出來,做成結構化卡片,不跟前面的 note 混在一起
+  let guide = [];
+  const gi = notes.findIndex(n => /^搶票教學/.test(n));
+  if (gi !== -1) { guide = notes.slice(gi); notes = notes.slice(0, gi); }
   const hasHeader = headers.some(h => h !== '');
   const thead = hasHeader ? `<thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>` : '';
   const tbody = bodyRows.map(r => `<tr>${r.map(c => { const v = (c ?? '').toString(); return `<td>${/https?:\/\//.test(v) ? linkify(v) : esc(v)}</td>`; }).join('')}</tr>`).join('');
   let html = '';
   if (bodyRows.length) html += `<div class="tablewrap"><table class="tbl">${thead}<tbody>${tbody}</tbody></table></div>`;
-  if (notes.length) html += `<div class="notes">${notes.map(n => `<div class="note">${linkify(n)}</div>`).join('')}</div>`;
+  if (notes.length) html += `<div class="notes">${notes.map(n => `<div class="note">${richText(n)}</div>`).join('')}</div>`;
+  if (guide.length) html += renderTicketGuide(guide);
   return html || '<p class="muted">這個分頁沒有內容。</p>';
+}
+// 搶票教學:標題橫幅 + 分組(〔..〕小標)+ 編號步驟 + 內嵌圖(附說明),整段一張卡片
+function renderTicketGuide(lines) {
+  const head = (lines[0] || '').split('※');
+  const title = (head[0] || '搶票教學').replace(/[:：]\s*$/, '').trim();
+  const source = head[1] ? head[1].trim() : '';
+  let body = '';
+  lines.slice(1).forEach(raw => {
+    const line = (raw || '').trim(); if (!line) return;
+    const sec = line.match(/^〔(.+)〕$/);
+    const img = line.match(/^\[\[img:([\w.\-]+)\]\]\s*(.*)$/);
+    const step = line.match(/^(\d+)\.\s*(.*)$/);
+    if (sec) body += `<div class="tksec">${esc(sec[1])}</div>`;
+    else if (img) body += `<figure class="tkfig"><img class="inlineimg" src="image/ticket/${img[1]}" alt="搶票說明圖" loading="lazy" onclick="openNoteLightbox('image/ticket/${img[1]}')" onerror="this.classList.add('imgmiss')"/>${img[2] ? `<figcaption>${esc(img[2])}</figcaption>` : ''}</figure>`;
+    else if (step) body += `<div class="tkstep"><span class="tknum">${step[1]}</span><span class="tktext">${richText(step[2])}</span></div>`;
+    else body += `<div class="tkline">${richText(line)}</div>`;
+  });
+  return `<div class="tkguide">
+    <div class="tkguide-head">🎫 ${esc(title)}${source ? `<span class="tksrc">${esc(source)}</span>` : ''}</div>
+    <div class="tkguide-body">${body}</div>
+  </div>`;
 }
 
 // ---------- 編輯 ----------

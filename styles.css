@@ -416,3 +416,23 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .nmodal-card input[type=text],.nmodal-card input:not([type=checkbox]),.nmodal-card textarea{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink);width:100%;box-sizing:border-box;margin-bottom:8px}
 .nmodal-card input:focus,.nmodal-card textarea:focus{outline:2px solid var(--gold);outline-offset:-2px}
 .nmodal-btns{display:flex;justify-content:flex-end;gap:8px}
+
+/* 搶票說明內嵌圖片([[img:]] 標記) */
+.inlineimg{display:block;max-width:100%;width:300px;border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);margin:8px 0 4px;cursor:zoom-in;image-rendering:auto;background:var(--green-l)}
+.inlineimg:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--shadow)}
+.inlineimg.imgmiss{width:auto;min-height:0;cursor:default}
+.inlineimg.imgmiss:hover{transform:none;box-shadow:3px 3px 0 var(--shadow)}
+.notes .note .inlineimg{width:340px}
+
+/* 搶票教學卡片(整段一張,跟前面的 note 框區隔) */
+.tkguide{border:2px solid var(--green-d);box-shadow:4px 4px 0 var(--shadow);margin-top:18px;background:var(--panel)}
+.tkguide-head{background:var(--green);color:#fff;padding:11px 15px;font-size:15px;border-bottom:2px solid var(--line);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.tksrc{font-size:11px;color:#eafff1;font-weight:400}
+.tkguide-body{padding:6px 15px 16px}
+.tksec{font-size:14px;color:var(--green-d);border-left:5px solid var(--green);padding:2px 0 2px 9px;margin:16px 0 8px;background:var(--green-l)}
+.tkstep{display:flex;gap:9px;align-items:flex-start;margin:7px 0;font-size:14px;line-height:1.7}
+.tknum{flex:0 0 auto;width:21px;height:21px;margin-top:1px;border:2px solid var(--line);background:var(--gold);color:var(--ink);font-family:var(--px);font-size:9px;display:flex;align-items:center;justify-content:center}
+.tktext{flex:1;min-width:0;word-break:break-word}
+.tkline{font-size:14px;line-height:1.7;margin:6px 0;color:var(--muted)}
+.tkfig{margin:8px 0 12px}
+.tkfig figcaption{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.6}
