@@ -413,8 +413,8 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .nm-all{border-bottom:2px dashed var(--shadow);padding-bottom:6px;margin-bottom:4px;display:flex}
 .nmodal-list{display:flex;flex-direction:column;gap:2px;margin-bottom:10px;max-height:180px;overflow:auto}
 .nmodal-list .notetog{padding:4px 0}
-.nmodal-card input[type=text],.nmodal-card input:not([type=checkbox]),.nmodal-card textarea{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink);width:100%;box-sizing:border-box;margin-bottom:8px}
-.nmodal-card input:focus,.nmodal-card textarea:focus{outline:2px solid var(--gold);outline-offset:-2px}
+.nmodal-card input[type=text],.nmodal-card input:not([type=checkbox]),.nmodal-card textarea,.nmodal-card select{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink);width:100%;box-sizing:border-box;margin-bottom:8px}
+.nmodal-card input:focus,.nmodal-card textarea:focus,.nmodal-card select:focus{outline:2px solid var(--gold);outline-offset:-2px}
 .nmodal-btns{display:flex;justify-content:flex-end;gap:8px}
 
 /* 搶票說明內嵌圖片([[img:]] 標記) */

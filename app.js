@@ -1127,6 +1127,26 @@ const TICKET_STEPS =
 〔刷卡付款〕
 · 資料務必正確:Email、電話、護照號碼、刷卡卡號
 · 刷卡人姓名要與護照一致;電話格式 +886 9xxxxxxxx(去掉開頭0)`;
+// 產生台灣時間下拉選項(12:00–20:00,每30分鐘一格),最後保留「自訂」
+function ticketTimeOptions() {
+  let opts = '<option value="">請選擇台灣時間</option>';
+  for (let m = 12 * 60; m <= 20 * 60; m += 30) {
+    const hh = String(Math.floor(m / 60)).padStart(2, '0');
+    const mm = String(m % 60).padStart(2, '0');
+    opts += `<option value="${hh}:${mm}">台灣 ${hh}:${mm}</option>`;
+  }
+  opts += '<option value="__custom__">自訂…</option>';
+  return opts;
+}
+// 由台灣時間換算成寄信用字串:韓國HH:MM / 台灣HH:MM(韓國 = 台灣 +1 小時)
+function twToTimeStr(tw) {
+  const [h, m] = tw.split(':').map(Number);
+  const kh = String(h + 1).padStart(2, '0');
+  const th = String(h).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  return `韓國${kh}:${mm} / 台灣${th}:${mm}`;
+}
+
 function openTicketModal() {
   const ov = document.createElement('div');
   ov.className = 'nmodal';
@@ -1137,8 +1157,10 @@ function openTicketModal() {
       <input id="tk-match" maxlength="60" placeholder="例:8/5(三) M1 BRO vs NS"/>
       <div class="nmodal-sec">搶票日期</div>
       <input id="tk-date" type="date"/>
-      <div class="nmodal-sec">開賣時間</div>
-      <input id="tk-time" maxlength="40" placeholder="例:韓國16:00 / 台灣15:00"/>
+      <div class="nmodal-sec">開賣時間(選台灣時間即可,寄出時會自動換算韓國時間)</div>
+      <select id="tk-time-sel">${ticketTimeOptions()}</select>
+      <input id="tk-time" maxlength="40" placeholder="例:韓國16:00 / 台灣15:00" hidden style="margin-top:8px"/>
+      <p id="tk-time-preview" class="muted small" style="margin:2px 0 8px" hidden></p>
       <div class="nmodal-sec">其他備註(選填,會放在時間下方)</div>
       <textarea id="tk-note" rows="2" maxlength="500" placeholder="例:記得先開好Interpark帳號、刷卡資料備妥"></textarea>
       <div id="nm-rcpt">${recipientLoadingHtml()}</div>
@@ -1153,10 +1175,30 @@ function openTicketModal() {
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
   ov.querySelector('#nm-cancel').onclick = () => ov.remove();
   fillRecipients(ov);   // 名單用小轉圈就地載入,不跳全頁 loading
+  // 選「自訂」時顯示自由輸入欄,其餘時候隱藏
+  const timeSel = ov.querySelector('#tk-time-sel'), timeInput = ov.querySelector('#tk-time');
+  const timePreview = ov.querySelector('#tk-time-preview');
+  // 依目前選擇算出寄出的時間字串(自訂=直接用輸入欄)
+  const currentTimeStr = () =>
+    timeSel.value === '__custom__' ? timeInput.value.trim()
+    : timeSel.value ? twToTimeStr(timeSel.value) : '';
+  const refreshPreview = () => {
+    const str = currentTimeStr();
+    timePreview.textContent = str ? '寄出會顯示:' + str : '';
+    timePreview.hidden = !str;
+  };
+  timeSel.onchange = () => {
+    const custom = timeSel.value === '__custom__';
+    timeInput.hidden = !custom;
+    if (custom) timeInput.focus(); else timeInput.value = '';
+    refreshPreview();
+  };
+  timeInput.oninput = refreshPreview;
   ov.querySelector('#nm-send').onclick = async () => {
     const rcpt = collectRecipients(ov); if (!rcpt) return;
     const match = ov.querySelector('#tk-match').value.trim();
-    const date = ov.querySelector('#tk-date').value, time = ov.querySelector('#tk-time').value.trim();
+    const date = ov.querySelector('#tk-date').value;
+    const time = currentTimeStr();
     const note = ov.querySelector('#tk-note').value.trim();
     if (!date && !time) { alert('請至少填搶票日期或開賣時間'); return; }
     const linkUrl = location.origin + location.pathname + '#t=' + encodeURIComponent(TRIP.id) + '&s=' + encodeURIComponent('LCK彈性方案') + '&go=ticket';
