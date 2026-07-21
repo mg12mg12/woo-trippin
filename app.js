@@ -1119,15 +1119,17 @@ async function openTicketModal() {
   ov.className = 'nmodal';
   ov.innerHTML = `
     <div class="nmodal-card">
-      <div class="nmodal-title">🎫 寄搶票說明</div>
+      <div class="nmodal-title">🎫 寄搶票通知</div>
+      <div class="nmodal-sec">比賽場次</div>
+      <input id="tk-match" maxlength="60" placeholder="例:8/5(三) M1 BRO vs NS"/>
       <div class="nmodal-sec">搶票日期</div>
       <input id="tk-date" type="date"/>
       <div class="nmodal-sec">開賣時間</div>
       <input id="tk-time" maxlength="40" placeholder="例:韓國16:00 / 台灣15:00"/>
-      <div class="nmodal-sec">其他備註(選填)</div>
-      <textarea id="tk-note" rows="3" maxlength="500" placeholder="例:記得先開好Interpark帳號、刷卡資料備妥"></textarea>
+      <div class="nmodal-sec">其他備註(選填,會放在時間下方)</div>
+      <textarea id="tk-note" rows="2" maxlength="500" placeholder="例:記得先開好Interpark帳號、刷卡資料備妥"></textarea>
       ${recipientBlockHtml(emails)}
-      <p class="muted small" style="margin:8px 0 0">📄 搶票步驟教學已內建,會自動附在信裡,不用重打。</p>
+      <p class="muted small" style="margin:8px 0 0">📄 搶票步驟教學已內建,會自動附在信裡並帶「看完整說明」連結,不用重打。</p>
       <div class="nmodal-btns">
         <button id="nm-cancel" class="btn-ghost">取消</button>
         <button id="nm-send" class="btn">寄出</button>
@@ -1140,16 +1142,17 @@ async function openTicketModal() {
   ov.querySelector('#nm-all').onchange = (e) => ov.querySelectorAll('.nm-to').forEach(c => { c.checked = e.target.checked; });
   ov.querySelector('#nm-send').onclick = async () => {
     const rcpt = collectRecipients(ov); if (!rcpt) return;
+    const match = ov.querySelector('#tk-match').value.trim();
     const date = ov.querySelector('#tk-date').value, time = ov.querySelector('#tk-time').value.trim();
     const note = ov.querySelector('#tk-note').value.trim();
     if (!date && !time) { alert('請至少填搶票日期或開賣時間'); return; }
-    const head = [date ? '📅 搶票日期:' + date : '', time ? '⏰ 開賣時間:' + time : ''].filter(Boolean).join('\n');
-    const message = head + '\n\n' + TICKET_STEPS + (note ? '\n\n📌 備註:' + note : '');
+    const linkUrl = location.origin + location.pathname + '#t=' + encodeURIComponent(TRIP.id) + '&s=' + encodeURIComponent('LCK彈性方案') + '&go=ticket';
+    const payload = { match, date, time, note, to: rcpt.to, extra: rcpt.extra, linkUrl };
     const btn = ov.querySelector('#nm-send'), st = ov.querySelector('#nm-status');
     btn.disabled = true; st.hidden = false; st.textContent = '寄送中…';
     try {
       if (DEV) await new Promise(r => setTimeout(r, 600));
-      else await apiPost('sendNotify', { spreadsheetId: TRIP.spreadsheetId, to: rcpt.to, extra: rcpt.extra, subject: 'LCK 搶票說明', message });
+      else await apiPost('sendTicketNotify', { spreadsheetId: TRIP.spreadsheetId, payload });
       st.textContent = '已寄出給 ' + rcpt.total + ' 人!';
       setTimeout(() => ov.remove(), 900);
     } catch (e) { btn.disabled = false; st.hidden = true; alert('寄送失敗:' + e.message); }
@@ -1212,6 +1215,14 @@ function renderView() {
   const title = `<div class="section-title">${ICONS[curSheet] || ''} ${esc(curSheet)}${btn}</div>`;
   $('#content').innerHTML = title + (curSheet === '每日行程' ? renderTimeline(sh) : renderTable(sh));
   const tk = $('#tk-notify'); if (tk) tk.onclick = openTicketModal;
+  // 從搶票通知信的連結進來(#...&go=ticket):自動捲到搶票說明,捲完清掉 go 免得重複
+  if (curSheet === 'LCK彈性方案' && parseHash().go === 'ticket') {
+    setTimeout(() => {
+      const el = document.getElementById('ticket-guide');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setHash(TRIP && TRIP.id, curSheet);
+    }, 200);
+  }
 }
 function renderTimeline(sh) {
   const H = sh.headers, idx = (l, d) => { const i = H.indexOf(l); return i === -1 ? d : i; };
@@ -1277,7 +1288,7 @@ function renderTicketGuide(lines) {
     else if (step) body += `<div class="tkstep"><span class="tknum">${step[1]}</span><span class="tktext">${richText(step[2])}</span></div>`;
     else body += `<div class="tkline">${richText(line)}</div>`;
   });
-  return `<div class="tkguide">
+  return `<div class="tkguide" id="ticket-guide">
     <div class="tkguide-head">🎫 ${esc(title)}${source ? `<span class="tksrc">${esc(source)}</span>` : ''}</div>
     <div class="tkguide-body">${body}</div>
   </div>`;
