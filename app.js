@@ -39,6 +39,7 @@ function orbSvg(t) {
 }
 
 let TRIP = null, curSheet = null, mode = 'view', editModel = null, dirty = false, MAP = null;
+let PENDING_TICKET_SCROLL = false;   // 從搶票通知信連結(#...&go=ticket)進來,渲染後捲到搶票說明
 let USER = null;  // 登入後的帳號 { email, name };本機 DEV 用示範帳號
 
 // 預設頭像:之後把圖檔放進 web/avatars/ 資料夾,再把「檔名」列在這裡即可,例:
@@ -514,6 +515,7 @@ async function showWish() {
 
 // ---------- 開啟行程 ----------
 async function openTrip(id, wantSheet) {
+  if (parseHash().go === 'ticket') PENDING_TICKET_SCROLL = true;   // 先記下,稍後 setHash 會把 go 清掉
   const meta = homeTrips().find(t => t.id === id); if (!meta) { showHome(); return; }
   try { TRIP = await loadTrip(meta); } catch (e) { alert('讀取失敗:' + e.message); showHome(); return; }
   stopFountain();
@@ -1080,10 +1082,26 @@ function recipientBlockHtml(emails) {
       <div class="nmodal-sec">測試寄送(白名單以外,逗號分隔,最多5個):</div>
       <input id="nm-extra" placeholder="例:test1@gmail.com, test2@gmail.com"/>`;
 }
+// 名單載入中的小轉圈(取代全頁 loading)
+function recipientLoadingHtml() {
+  return '<div class="nm-loading"><span class="spin"></span> 載入名單中…</div>';
+}
+// 非同步載入名單填入 #nm-rcpt,完成後綁全選、啟用送出鈕
+async function fillRecipients(ov) {
+  const host = ov.querySelector('#nm-rcpt');
+  try {
+    const emails = await loadNotifyEmails();
+    host.innerHTML = recipientBlockHtml(emails);
+    const all = ov.querySelector('#nm-all');
+    if (all) all.onchange = (e) => ov.querySelectorAll('.nm-to').forEach(c => { c.checked = e.target.checked; });
+    const send = ov.querySelector('#nm-send'); if (send) send.disabled = false;
+  } catch (e) { host.innerHTML = '<p class="muted small" style="padding:8px 0">讀取名單失敗:' + esc(e.message) + '</p>'; }
+}
 // 從收件人區塊收集並驗證;回傳 {to, extra, total} 或 null(驗證失敗已跳 alert)
 function collectRecipients(ov) {
   const to = Array.from(ov.querySelectorAll('.nm-to:checked')).map(c => c.value);
-  const extra = ov.querySelector('#nm-extra').value.split(/[,;、\s]+/).map(s => s.trim()).filter(Boolean);
+  const extraEl = ov.querySelector('#nm-extra');
+  const extra = (extraEl ? extraEl.value : '').split(/[,;、\s]+/).map(s => s.trim()).filter(Boolean);
   if (!to.length && !extra.length) { alert('請至少勾選或輸入一個收件人'); return null; }
   if (extra.length > 5) { alert('測試收件人最多 5 個'); return null; }
   const bad = extra.find(t => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t));
@@ -1109,12 +1127,7 @@ const TICKET_STEPS =
 〔刷卡付款〕
 · 資料務必正確:Email、電話、護照號碼、刷卡卡號
 · 刷卡人姓名要與護照一致;電話格式 +886 9xxxxxxxx(去掉開頭0)`;
-async function openTicketModal() {
-  let emails = [];
-  showLoading();
-  try { emails = await loadNotifyEmails(); }
-  catch (e) { hideLoading(); alert('讀取名單失敗:' + e.message); return; }
-  hideLoading();
+function openTicketModal() {
   const ov = document.createElement('div');
   ov.className = 'nmodal';
   ov.innerHTML = `
@@ -1128,18 +1141,18 @@ async function openTicketModal() {
       <input id="tk-time" maxlength="40" placeholder="例:韓國16:00 / 台灣15:00"/>
       <div class="nmodal-sec">其他備註(選填,會放在時間下方)</div>
       <textarea id="tk-note" rows="2" maxlength="500" placeholder="例:記得先開好Interpark帳號、刷卡資料備妥"></textarea>
-      ${recipientBlockHtml(emails)}
+      <div id="nm-rcpt">${recipientLoadingHtml()}</div>
       <p class="muted small" style="margin:8px 0 0">📄 搶票步驟教學已內建,會自動附在信裡並帶「看完整說明」連結,不用重打。</p>
       <div class="nmodal-btns">
         <button id="nm-cancel" class="btn-ghost">取消</button>
-        <button id="nm-send" class="btn">寄出</button>
+        <button id="nm-send" class="btn" disabled>寄出</button>
       </div>
       <p id="nm-status" class="muted small" hidden></p>
     </div>`;
   document.body.appendChild(ov);
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
   ov.querySelector('#nm-cancel').onclick = () => ov.remove();
-  ov.querySelector('#nm-all').onchange = (e) => ov.querySelectorAll('.nm-to').forEach(c => { c.checked = e.target.checked; });
+  fillRecipients(ov);   // 名單用小轉圈就地載入,不跳全頁 loading
   ov.querySelector('#nm-send').onclick = async () => {
     const rcpt = collectRecipients(ov); if (!rcpt) return;
     const match = ov.querySelector('#tk-match').value.trim();
@@ -1160,37 +1173,25 @@ async function openTicketModal() {
 }
 
 // ---------- 管理員:寄通知信(收件人=登入白名單,勾選寄送)----------
-async function openNotifyModal() {
-  let emails = [];
-  showLoading();
-  try {
-    if (DEV) emails = [((USER && USER.email) || 'demo@local'), 'a20819z@gmail.com', 'leelin36942@gmail.com'];
-    else { const d = await apiPost('notifyEmails', { spreadsheetId: TRIP.spreadsheetId }); emails = d.emails || []; }
-  } catch (e) { hideLoading(); alert('讀取名單失敗:' + e.message); return; }
-  hideLoading();
+function openNotifyModal() {
   const ov = document.createElement('div');
   ov.className = 'nmodal';
   ov.innerHTML = `
     <div class="nmodal-card">
       <div class="nmodal-title">📮 寄通知信</div>
-      <div class="nmodal-sec">收件人(白名單全員):</div>
-      <label class="notetog nm-all"><input id="nm-all" type="checkbox"/> 全選</label>
-      <div class="nmodal-list">${emails.map((em, i) =>
-        `<label class="notetog"><input type="checkbox" class="nm-to" value="${esc(em)}"/> ${animalOf(em)} ${esc(em)}</label>`).join('')}</div>
-      <div class="nmodal-sec">測試寄送(白名單以外,逗號分隔,最多5個):</div>
-      <input id="nm-extra" placeholder="例:test1@gmail.com, test2@gmail.com"/>
+      <div id="nm-rcpt">${recipientLoadingHtml()}</div>
       <input id="nm-subject" maxlength="60" placeholder="主旨(預設:旅程通知)"/>
       <textarea id="nm-msg" rows="5" maxlength="2000" placeholder="要通知大家什麼?"></textarea>
       <div class="nmodal-btns">
         <button id="nm-cancel" class="btn-ghost">取消</button>
-        <button id="nm-send" class="btn">寄出</button>
+        <button id="nm-send" class="btn" disabled>寄出</button>
       </div>
       <p id="nm-status" class="muted small" hidden></p>
     </div>`;
   document.body.appendChild(ov);
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
   ov.querySelector('#nm-cancel').onclick = () => ov.remove();
-  ov.querySelector('#nm-all').onchange = (e) => ov.querySelectorAll('.nm-to').forEach(c => { c.checked = e.target.checked; });
+  fillRecipients(ov);   // 名單用小轉圈就地載入,不跳全頁 loading
   ov.querySelector('#nm-send').onclick = async () => {
     const rcpt = collectRecipients(ov); if (!rcpt) return;
     const subject = ov.querySelector('#nm-subject').value.trim() || '旅程通知';
@@ -1215,14 +1216,16 @@ function renderView() {
   const title = `<div class="section-title">${ICONS[curSheet] || ''} ${esc(curSheet)}${btn}</div>`;
   $('#content').innerHTML = title + (curSheet === '每日行程' ? renderTimeline(sh) : renderTable(sh));
   const tk = $('#tk-notify'); if (tk) tk.onclick = openTicketModal;
-  // 從搶票通知信的連結進來(#...&go=ticket):自動捲到搶票說明,捲完清掉 go 免得重複
-  if (curSheet === 'LCK彈性方案' && parseHash().go === 'ticket') {
-    setTimeout(() => {
-      const el = document.getElementById('ticket-guide');
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setHash(TRIP && TRIP.id, curSheet);
-    }, 200);
-  }
+  // 從搶票通知信連結進來:捲到搶票說明(旗標只觸發一次)
+  if (curSheet === 'LCK彈性方案' && PENDING_TICKET_SCROLL) { PENDING_TICKET_SCROLL = false; scrollToTicket(); }
+}
+// 捲到搶票說明;內含圖片會邊載入邊撐高,故載入後再校正一次位置
+function scrollToTicket() {
+  const el = document.getElementById('ticket-guide');
+  if (!el) return;
+  const go = () => el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(go, 300);
+  el.querySelectorAll('img').forEach(img => { if (!img.complete) img.addEventListener('load', () => setTimeout(go, 60), { once: true }); });
 }
 function renderTimeline(sh) {
   const H = sh.headers, idx = (l, d) => { const i = H.indexOf(l); return i === -1 ? d : i; };

@@ -436,3 +436,8 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .tkline{font-size:14px;line-height:1.7;margin:6px 0;color:var(--muted)}
 .tkfig{margin:8px 0 12px}
 .tkfig figcaption{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.6}
+
+/* modal 內名單載入小轉圈(取代全頁 loading) */
+@keyframes nmspin{to{transform:rotate(360deg)}}
+.spin{width:16px;height:16px;flex:0 0 auto;border:3px solid var(--shadow);border-top-color:var(--green-d);border-radius:50%;display:inline-block;vertical-align:middle;animation:nmspin .7s linear infinite}
+.nm-loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;border:2px dashed var(--line);color:var(--muted);font-size:13px;margin:6px 0 10px}
