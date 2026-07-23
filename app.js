@@ -524,17 +524,20 @@ async function openTrip(id, wantSheet) {
     <span class="troute">${esc(TRIP.origin || '')} ✈ ${esc(TRIP.dest || '')}</span>
     <span class="tm">${esc(TRIP.dateRange || '')} · ${esc(TRIP.days || '')} 天</span>`;
   renderMap();
-  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '願望清單' && n !== '旅遊筆記' && n !== '行李清單');
+  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '拆帳' && n !== '願望清單' && n !== '旅遊筆記' && n !== '行李清單');
   let tabsHtml = names.map((n, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" data-s="${esc(n)}"><span class="ic">${ICONS[n] || '•'}</span><span class="lab">${esc(n)}</span></button>`).join('');
   tabsHtml += `<button class="tab" data-s="__exp__"><span class="ic">💵</span><span class="lab">支出</span></button>`;
+  tabsHtml += `<button class="tab" data-s="__split__"><span class="ic">💸</span><span class="lab">拆帳</span></button>`;
   tabsHtml += `<button class="tab" data-s="__notes__"><span class="ic">📓</span><span class="lab">旅遊筆記</span></button>`;
   tabsHtml += `<button class="tab" data-s="__pack__"><span class="ic">🧳</span><span class="lab">行李清單</span></button>`;
   $('#sectionnav').innerHTML = tabsHtml;
   $('#sectionnav').querySelectorAll('.tab').forEach(t => t.onclick = () => selectSheet(t.dataset.s));
-  const target = (wantSheet && (names.indexOf(wantSheet) !== -1 || wantSheet === '__exp__' || wantSheet === '__notes__' || wantSheet === '__pack__')) ? wantSheet : names[0];
+  const special = ['__exp__', '__split__', '__notes__', '__pack__'];
+  const target = (wantSheet && (names.indexOf(wantSheet) !== -1 || special.indexOf(wantSheet) !== -1)) ? wantSheet : names[0];
   curSheet = target; setActiveTab(target); setHash(id, target);
   if (target === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
+  else if (target === '__split__') { $('#toolbar').hidden = true; showLoading(); renderSplits().finally(hideLoading); }
   else if (target === '__notes__') { $('#toolbar').hidden = true; showLoading(); renderNotes().finally(hideLoading); }
   else if (target === '__pack__') { $('#toolbar').hidden = true; showLoading(); renderPacking().finally(hideLoading); }
   else { $('#toolbar').hidden = false; setMode('view'); }
@@ -544,6 +547,7 @@ function selectSheet(name) {
   if (!guardDirty()) return;
   curSheet = name; setActiveTab(name); setHash(TRIP && TRIP.id, name);
   if (name === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
+  else if (name === '__split__') { $('#toolbar').hidden = true; showLoading(); renderSplits().finally(hideLoading); }
   else if (name === '__notes__') { $('#toolbar').hidden = true; showLoading(); renderNotes().finally(hideLoading); }
   else if (name === '__pack__') { $('#toolbar').hidden = true; showLoading(); renderPacking().finally(hideLoading); }
   else { $('#toolbar').hidden = false; showLoading(); setMode('view'); hideLoading(); }
@@ -651,13 +655,13 @@ function drawExpenses(rate0) {
   const opts = EXP_CATS.map(c => `<option value="${c}">${c}</option>`).join('');
   const rows = sorted.map(({ e, i }) => `
     <tr>
-      <td>${esc(e.name)}</td>
+      <td>${esc(e.name)}${e.splitId ? ' <span class="ecat" title="來自拆帳,請到拆帳分頁管理">💸拆帳</span>' : ''}</td>
       <td><span class="ecat">${esc(e.category || '其他')}</span></td>
       <td class="num">${e.qty || 1}</td>
       <td class="num">${(Number(e.amount) || 0).toLocaleString()}</td>
       <td class="num">${totOf(e).toLocaleString()}</td>
       <td class="num">NT$${twdOf(e).toLocaleString()}</td>
-      <td class="rowdel"><button data-del="${i}" title="刪除">✕</button></td>
+      <td class="rowdel">${e.splitId ? '' : `<button data-del="${i}" title="刪除">✕</button>`}</td>
     </tr>`).join('');
   $('#content').innerHTML = `
     <div class="section-title">💵 支出 <span class="muted small">(只有你自己看得到)</span></div>
@@ -685,7 +689,7 @@ async function onAddExpense() {
   const amount = parseFloat($('#e-amt').value);
   if (!name || isNaN(amount)) { alert('請至少輸入商品名稱和金額'); return; }
   const qty = parseInt($('#e-qty').value, 10); const rate = parseFloat($('#e-rate').value);
-  EXP.push({ name, category: $('#e-cat').value, qty: (qty > 0 ? qty : 1), amount, rate: (isNaN(rate) ? getDefaultRate() : rate) });
+  EXP.push({ name, category: $('#e-cat').value, qty: (qty > 0 ? qty : 1), amount, rate: (isNaN(rate) ? getDefaultRate() : rate), splitId: '' });
   $('#e-add').disabled = true;
   try { await persistExpenses(); } catch (e) { alert('儲存失敗:' + e.message); EXP.pop(); }
   $('#e-add').disabled = false;
@@ -708,6 +712,208 @@ function drawExpChart() {
   const ctx = document.getElementById('expchart'); if (!ctx) return;
   EXPCHART = new Chart(ctx, { type: 'pie', data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#fff', borderWidth: 2 }] },
     options: { plugins: { legend: { position: 'bottom', labels: { font: { family: 'DotGothic16' } } } } } });
+}
+
+// ---------- 拆帳頁(付款人與被分帳人都看得到;記一筆會自動寫進各人的支出)----------
+let SPLITS = [], SPLIT_EMAILS = [], SPLIT_ME = '';
+const myEmail = () => String((USER && USER.email) || 'demo@local').toLowerCase();
+
+async function loadSplits() {
+  if (DEV) { try { return JSON.parse(localStorage.getItem('split:' + TRIP.id)) || []; } catch (e) { return []; } }
+  const d = await apiPost('splits', { spreadsheetId: TRIP.spreadsheetId }); return d.items || [];
+}
+// DEV 模式:直接操作 localStorage 的支出,模擬「自動寫進支出」
+function devAddExpense(item, splitId) {
+  let arr = []; try { arr = JSON.parse(localStorage.getItem('exp:' + TRIP.id)) || []; } catch (e) {}
+  arr.push({ name: item.name, category: item.category, qty: 1, amount: item.amount, rate: item.rate, splitId });
+  localStorage.setItem('exp:' + TRIP.id, JSON.stringify(arr));
+}
+function devDelExpenseBySplit(splitId) {
+  let arr = []; try { arr = JSON.parse(localStorage.getItem('exp:' + TRIP.id)) || []; } catch (e) {}
+  localStorage.setItem('exp:' + TRIP.id, JSON.stringify(arr.filter(e => e.splitId !== splitId)));
+}
+
+// 依「未結清」的分攤算出每人淨額 + 最少還款次數的轉帳清單
+function computeSettlement(splits) {
+  const net = {};
+  splits.forEach(sp => {
+    const payer = String(sp.payer).toLowerCase();
+    (sp.shares || []).forEach(s => {
+      const em = String(s.email).toLowerCase();
+      if (em === payer) return;                 // 付款人自己那份不算欠款
+      if (sp.settled && sp.settled[em]) return; // 已結清的不列入
+      const twd = Math.round((Number(s.amount) || 0) * (Number(sp.rate) || 0));
+      net[em] = (net[em] || 0) - twd;
+      net[payer] = (net[payer] || 0) + twd;
+    });
+  });
+  const debtors = [], creditors = [];
+  Object.keys(net).forEach(em => { const v = Math.round(net[em]); if (v < 0) debtors.push({ em, amt: -v }); else if (v > 0) creditors.push({ em, amt: v }); });
+  debtors.sort((a, b) => b.amt - a.amt); creditors.sort((a, b) => b.amt - a.amt);
+  const transfers = [];
+  let di = 0, ci = 0;
+  const D = debtors.map(x => ({ ...x })), C = creditors.map(x => ({ ...x }));
+  while (di < D.length && ci < C.length) {
+    const pay = Math.min(D[di].amt, C[ci].amt);
+    if (pay > 0) transfers.push({ from: D[di].em, to: C[ci].em, amt: pay });
+    D[di].amt -= pay; C[ci].amt -= pay;
+    if (D[di].amt === 0) di++;
+    if (C[ci].amt === 0) ci++;
+  }
+  return { net, transfers };
+}
+
+async function loadRoster() {
+  if (DEV) return [((USER && USER.email) || 'demo@local'), 'a20819z@gmail.com', 'leelin36942@gmail.com'];
+  const d = await apiPost('roster', { spreadsheetId: TRIP.spreadsheetId });
+  return d.emails || [];
+}
+async function renderSplits() {
+  try {
+    SPLIT_EMAILS = await loadRoster();
+    SPLITS = await loadSplits();
+    SPLIT_ME = myEmail();
+  } catch (e) { $('#content').innerHTML = '<p class="muted">讀取拆帳失敗:' + esc(e.message) + '</p>'; return; }
+  drawSplits();
+}
+
+function drawSplits() {
+  const rate0 = getDefaultRate();
+  const me = SPLIT_ME;
+  const cats = EXP_CATS.map(c => `<option value="${c}">${c}</option>`).join('');
+  // 分攤金額輸入列:白名單每人一格,我標示為付款人
+  const partRows = SPLIT_EMAILS.map(em => {
+    const isMe = String(em).toLowerCase() === me;
+    return `<div class="split-part">
+      <span class="sp-nm">${animalOf(em)} ${esc(em)}${isMe ? ' <b>(我·付款人)</b>' : ''}</span>
+      <input type="number" min="0" step="0.01" class="sp-amt" data-em="${esc(em)}" placeholder="分攤金額" inputmode="decimal"/>
+    </div>`;
+  }).join('');
+
+  // 結算摘要
+  const { net, transfers } = computeSettlement(SPLITS);
+  const nameOf = (em) => `${animalOf(em)} ${esc(em)}`;
+  let summaryHtml;
+  if (!transfers.length) {
+    summaryHtml = '<p class="muted small" style="padding:4px 0">目前沒有待結清的款項。</p>';
+  } else {
+    summaryHtml = transfers.map(t =>
+      `<div class="settle-row"><span class="settle-from">${nameOf(t.from)}</span><span class="settle-arrow">還</span><span class="settle-to">${nameOf(t.to)}</span><span class="settle-amt">NT$${t.amt.toLocaleString()}</span></div>`).join('');
+  }
+
+  // 清單
+  const rows = SPLITS.slice().reverse().map(sp => {
+    const payer = String(sp.payer).toLowerCase();
+    const iAmPayer = payer === me;
+    const detail = (sp.shares || []).map(s => {
+      const em = String(s.email).toLowerCase();
+      const twd = Math.round((Number(s.amount) || 0) * (Number(sp.rate) || 0));
+      const line = `${animalOf(em)} ${esc(shortEmail(em))} ${(Number(s.amount) || 0).toLocaleString()}(NT$${twd.toLocaleString()})`;
+      if (em === payer) return `<div class="sp-line"><span>${line}</span><span class="ecat">自己</span></div>`;
+      const done = !!(sp.settled && sp.settled[em]);
+      const canToggle = iAmPayer || em === me;
+      const badge = canToggle
+        ? `<button class="btn-ghost sp-settle" data-sid="${esc(sp.id)}" data-em="${esc(em)}" data-done="${done ? 1 : 0}">${done ? '已還✔' : '標記已還'}</button>`
+        : `<span class="ecat">${done ? '已還✔' : '未還'}</span>`;
+      return `<div class="sp-line"><span>${line}</span>${badge}</div>`;
+    }).join('');
+    return `<tr>
+      <td>${esc(sp.item || '(未命名)')}<div class="muted small">${esc(sp.category || '')}${sp.note ? ' · ' + esc(sp.note) : ''}</div></td>
+      <td>${animalOf(payer)} ${esc(shortEmail(payer))}${iAmPayer ? '(我)' : ''}</td>
+      <td class="num">NT$${(Number(sp.totalTwd) || Math.round((Number(sp.totalOrig) || 0) * (Number(sp.rate) || 0))).toLocaleString()}</td>
+      <td>${detail}</td>
+      <td class="rowdel">${iAmPayer ? `<button data-delsplit="${esc(sp.id)}" title="刪除">✕</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+
+  $('#content').innerHTML = `
+    <div class="section-title">💸 拆帳 <span class="muted small">(付款人與被分帳的人都看得到)</span></div>
+    <div class="splitform">
+      <div class="splitform-top">
+        <input id="s-item" placeholder="項目名稱(例:第一天晚餐)"/>
+        <select id="s-cat">${cats}</select>
+        <input id="s-rate" type="number" step="0.0001" value="${rate0}" title="匯率(原幣換台幣)"/>
+      </div>
+      <div class="muted small" style="margin:4px 0">填每個人各分攤多少(原幣),沒份的留空。你是付款人。</div>
+      <div class="split-parts">${partRows}</div>
+      <div class="exptotal">原幣總額 <b id="s-total">0</b> · 台幣約 <b id="s-total-twd">NT$0</b></div>
+      <input id="s-note" placeholder="備註(選填)" style="width:100%;box-sizing:border-box"/>
+      <div style="margin-top:8px"><button id="s-add" class="btn">＋ 記一筆拆帳</button></div>
+    </div>
+    <div class="section-title" style="margin-top:8px">💰 結算(最少還款次數)</div>
+    <div class="settle-box">${summaryHtml}</div>
+    <div class="tablewrap"${SPLITS.length ? '' : ' hidden'} style="margin-top:12px">
+      <table class="tbl"><thead><tr><th>項目</th><th>付款人</th><th>台幣總額</th><th>分攤明細</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
+    ${SPLITS.length ? '' : '<p class="muted" style="padding:8px 0">還沒有拆帳紀錄,先在上面記一筆。</p>'}`;
+
+  const recalc = () => {
+    let sum = 0;
+    $('#content').querySelectorAll('.sp-amt').forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v) && v > 0) sum += v; });
+    const rate = parseFloat($('#s-rate').value) || 0;
+    $('#s-total').textContent = sum.toLocaleString();
+    $('#s-total-twd').textContent = 'NT$' + Math.round(sum * rate).toLocaleString();
+  };
+  $('#content').querySelectorAll('.sp-amt').forEach(inp => inp.oninput = recalc);
+  $('#s-rate').oninput = recalc;
+  $('#s-add').onclick = onAddSplit;
+  $('#content').querySelectorAll('.sp-settle').forEach(b => b.onclick = () => onToggleSettle(b.dataset.sid, b.dataset.em, b.dataset.done !== '1'));
+  $('#content').querySelectorAll('[data-delsplit]').forEach(b => b.onclick = () => onDelSplit(b.dataset.delsplit));
+}
+function shortEmail(em) { const s = String(em || ''); const i = s.indexOf('@'); return i === -1 ? s : s.slice(0, i); }
+
+async function onAddSplit() {
+  const item = $('#s-item').value.trim();
+  const category = $('#s-cat').value;
+  const rate = parseFloat($('#s-rate').value) || getDefaultRate();
+  const note = $('#s-note').value.trim();
+  const shares = [];
+  $('#content').querySelectorAll('.sp-amt').forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v) && v > 0) shares.push({ email: inp.dataset.em.toLowerCase(), amount: v }); });
+  if (!item) { alert('請填項目名稱'); return; }
+  if (!shares.length) { alert('請至少填一個人的分攤金額'); return; }
+  const btn = $('#s-add'); btn.disabled = true;
+  try {
+    if (DEV) {
+      const id = 'S' + Date.now();
+      SPLITS.push({ id, createdAt: new Date().toISOString(), payer: SPLIT_ME, item, category, rate, totalOrig: shares.reduce((a, s) => a + s.amount, 0), totalTwd: Math.round(shares.reduce((a, s) => a + s.amount, 0) * rate), shares, settled: {}, note });
+      localStorage.setItem('split:' + TRIP.id, JSON.stringify(SPLITS));
+      const mine = shares.find(s => s.email === SPLIT_ME);
+      if (mine) devAddExpense({ name: item, category, amount: mine.amount, rate }, id);
+    } else {
+      await apiPost('addSplit', { spreadsheetId: TRIP.spreadsheetId, split: { item, category, rate, note, shares } });
+      SPLITS = await loadSplits();
+    }
+  } catch (e) { btn.disabled = false; alert('儲存失敗:' + e.message); return; }
+  drawSplits();
+}
+
+async function onToggleSettle(sid, em, settled) {
+  try {
+    if (DEV) {
+      const sp = SPLITS.find(s => s.id === sid); if (sp) { sp.settled = sp.settled || {}; sp.settled[em] = settled; }
+      localStorage.setItem('split:' + TRIP.id, JSON.stringify(SPLITS));
+    } else {
+      await apiPost('settleSplit', { spreadsheetId: TRIP.spreadsheetId, splitId: sid, target: em, settled });
+      SPLITS = await loadSplits();
+    }
+  } catch (e) { alert('更新失敗:' + e.message); return; }
+  drawSplits();
+}
+
+async function onDelSplit(sid) {
+  if (!confirm('確定刪除這筆拆帳?各人支出裡連動的紀錄也會一起刪除。')) return;
+  try {
+    if (DEV) {
+      SPLITS = SPLITS.filter(s => s.id !== sid);
+      localStorage.setItem('split:' + TRIP.id, JSON.stringify(SPLITS));
+      devDelExpenseBySplit(sid);
+    } else {
+      await apiPost('deleteSplit', { spreadsheetId: TRIP.spreadsheetId, splitId: sid });
+      SPLITS = await loadSplits();
+    }
+  } catch (e) { alert('刪除失敗:' + e.message); return; }
+  drawSplits();
 }
 
 // ---------- 旅遊筆記(圖片存雲端硬碟,試算表記檔案ID)----------

@@ -317,6 +317,27 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .expcat-row .cpct{font-family:var(--px);font-size:10px;color:var(--green-d);width:44px;text-align:right}
 .fly2 .fly-load{position:absolute;left:0;right:0;bottom:14%;text-align:center;font-family:var(--px);font-size:12px;color:#fff;opacity:0;transition:opacity .3s;text-shadow:2px 2px 0 rgba(0,0,0,.2)}
 
+/* ---------- 拆帳 ---------- */
+.splitform{background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:14px;margin-bottom:14px}
+.splitform-top{display:flex;flex-wrap:wrap;gap:8px}
+.splitform input,.splitform select{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink)}
+.splitform input:focus,.splitform select:focus{outline:2px solid var(--gold);outline-offset:-2px}
+.splitform-top #s-item{flex:2;min-width:150px}
+.splitform-top #s-cat{flex:1;min-width:96px}
+.splitform-top #s-rate{flex:1;min-width:80px}
+.split-parts{display:flex;flex-direction:column;gap:6px;margin:6px 0}
+.split-part{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.split-part .sp-nm{flex:1;min-width:150px;font-size:13px}
+.split-part .sp-amt{width:130px}
+.settle-box{background:var(--green-l);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:10px 12px;margin-bottom:6px}
+.settle-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0}
+.settle-row .settle-from{font-weight:400}
+.settle-row .settle-arrow{color:var(--green-d);font-family:var(--px);font-size:11px}
+.settle-row .settle-to{flex:1}
+.settle-row .settle-amt{font-family:var(--px);font-size:13px;color:var(--green-d);font-variant-numeric:tabular-nums}
+.sp-line{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0}
+.sp-line .sp-settle{padding:2px 8px;font-size:11px}
+
 /* ---------- 旅遊筆記 ---------- */
 .noteform{background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:14px;margin-bottom:14px}
 .noterow1{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
