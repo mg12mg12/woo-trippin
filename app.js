@@ -524,20 +524,22 @@ async function openTrip(id, wantSheet) {
     <span class="troute">${esc(TRIP.origin || '')} ✈ ${esc(TRIP.dest || '')}</span>
     <span class="tm">${esc(TRIP.dateRange || '')} · ${esc(TRIP.days || '')} 天</span>`;
   renderMap();
-  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '拆帳' && n !== '願望清單' && n !== '旅遊筆記' && n !== '行李清單');
+  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '拆帳' && n !== '購物清單' && n !== '願望清單' && n !== '旅遊筆記' && n !== '行李清單');
   let tabsHtml = names.map((n, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" data-s="${esc(n)}"><span class="ic">${ICONS[n] || '•'}</span><span class="lab">${esc(n)}</span></button>`).join('');
   tabsHtml += `<button class="tab" data-s="__exp__"><span class="ic">💵</span><span class="lab">支出</span></button>`;
   tabsHtml += `<button class="tab" data-s="__split__"><span class="ic">💸</span><span class="lab">拆帳</span></button>`;
+  tabsHtml += `<button class="tab" data-s="__shop__"><span class="ic">🛒</span><span class="lab">購物清單</span></button>`;
   tabsHtml += `<button class="tab" data-s="__notes__"><span class="ic">📓</span><span class="lab">旅遊筆記</span></button>`;
   tabsHtml += `<button class="tab" data-s="__pack__"><span class="ic">🧳</span><span class="lab">行李清單</span></button>`;
   $('#sectionnav').innerHTML = tabsHtml;
   $('#sectionnav').querySelectorAll('.tab').forEach(t => t.onclick = () => selectSheet(t.dataset.s));
-  const special = ['__exp__', '__split__', '__notes__', '__pack__'];
+  const special = ['__exp__', '__split__', '__shop__', '__notes__', '__pack__'];
   const target = (wantSheet && (names.indexOf(wantSheet) !== -1 || special.indexOf(wantSheet) !== -1)) ? wantSheet : names[0];
   curSheet = target; setActiveTab(target); setHash(id, target);
   if (target === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
   else if (target === '__split__') { $('#toolbar').hidden = true; showLoading(); renderSplits().finally(hideLoading); }
+  else if (target === '__shop__') { $('#toolbar').hidden = true; showLoading(); renderShopping().finally(hideLoading); }
   else if (target === '__notes__') { $('#toolbar').hidden = true; showLoading(); renderNotes().finally(hideLoading); }
   else if (target === '__pack__') { $('#toolbar').hidden = true; showLoading(); renderPacking().finally(hideLoading); }
   else { $('#toolbar').hidden = false; setMode('view'); }
@@ -548,6 +550,7 @@ function selectSheet(name) {
   curSheet = name; setActiveTab(name); setHash(TRIP && TRIP.id, name);
   if (name === '__exp__') { $('#toolbar').hidden = true; showLoading(); renderExpenses().finally(hideLoading); }
   else if (name === '__split__') { $('#toolbar').hidden = true; showLoading(); renderSplits().finally(hideLoading); }
+  else if (name === '__shop__') { $('#toolbar').hidden = true; showLoading(); renderShopping().finally(hideLoading); }
   else if (name === '__notes__') { $('#toolbar').hidden = true; showLoading(); renderNotes().finally(hideLoading); }
   else if (name === '__pack__') { $('#toolbar').hidden = true; showLoading(); renderPacking().finally(hideLoading); }
   else { $('#toolbar').hidden = false; showLoading(); setMode('view'); hideLoading(); }
@@ -1174,6 +1177,306 @@ function openNoteLightbox(src) {
   ov.innerHTML = `<img src="${esc(src)}" alt="筆記照片"/><span class="notelight-x">✕ 點一下關閉</span>`;
   ov.onclick = () => ov.remove();
   document.body.appendChild(ov);
+}
+
+// ---------- 購物清單(依帳號隔離;可切換公開;圖片縮圖+放大;已購買排到最下)----------
+let SHOP = [], SHOP_SCOPE = 'mine', SHOP_IMGS = [], SHOP_BUSY = false, SHOP_EDIT = null, SHOP_EMAILS = [];
+const SHOP_MAX = 3;
+const SHOP_TYPES = ['自用', '代購', '送禮'];
+
+function shopNowStr() { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+function devShopAll() { try { return JSON.parse(LS.getItem('shop:' + TRIP.id)) || []; } catch (e) { return []; } }
+function devShopSave(all) { LS.setItem('shop:' + TRIP.id, JSON.stringify(all)); }
+async function loadShopping() {
+  if (DEV) {
+    const all = devShopAll().map(x => Object.assign({ mine: true, author: myEmail(), isPublic: false, bought: false }, x));
+    SHOP = SHOP_SCOPE === 'public' ? all.filter(x => x.isPublic) : all.filter(x => x.mine);
+    return;
+  }
+  const d = await apiPost('shopping', { spreadsheetId: TRIP.spreadsheetId, scope: SHOP_SCOPE });
+  SHOP = d.items || [];
+}
+async function renderShopping() {
+  SHOP_EDIT = null; SHOP_IMGS = [];
+  try { SHOP_EMAILS = await loadRoster(); await loadShopping(); }
+  catch (e) { $('#content').innerHTML = '<p class="muted">讀取購物清單失敗:' + esc(e.message) + '</p>'; return; }
+  drawShopping();
+}
+async function switchShopScope(scope) {
+  if (SHOP_SCOPE === scope || SHOP_BUSY) return;
+  SHOP_SCOPE = scope; showLoading();
+  try { await renderShopping(); } finally { hideLoading(); }
+}
+function sortedShop() {
+  return SHOP.slice().sort((a, b) => {
+    if (!!a.bought !== !!b.bought) return a.bought ? 1 : -1;           // 未購買在上,已購買在下
+    return (b.updatedAt || '').localeCompare(a.updatedAt || '');       // 同組內新→舊
+  });
+}
+const shopShortTarget = (t) => String(t || '').indexOf('@') !== -1 ? (animalOf(t) + ' ' + shortEmail(t)) : esc(t);
+function shopBadge(type) {
+  const cls = type === '送禮' ? 'gift' : (type === '代購' ? 'proxy' : 'self');
+  return `<span class="shop-badge ${cls}">${esc(type || '自用')}</span>`;
+}
+// 對象下拉:團員名單 + 最後「其他」;curVal 用於編輯時回填
+function targetSelectHtml(pfx, curVal) {
+  const cur = String(curVal || '');
+  const inRoster = SHOP_EMAILS.some(em => em.toLowerCase() === cur.toLowerCase());
+  const opts = ['<option value="">對象(選填)</option>']
+    .concat(SHOP_EMAILS.map(em => `<option value="${esc(em)}"${em.toLowerCase() === cur.toLowerCase() ? ' selected' : ''}>${animalOf(em)} ${esc(shortEmail(em))}</option>`))
+    .concat([`<option value="__other__"${(cur && !inRoster) ? ' selected' : ''}>其他(自行輸入)</option>`]).join('');
+  const otherVal = (cur && !inRoster) ? cur : '';
+  return `<select id="${pfx}-target" class="shop-target">${opts}</select>
+    <input id="${pfx}-target-other" class="shop-target-other" maxlength="40" placeholder="輸入對象" value="${esc(otherVal)}"${(cur && !inRoster) ? '' : ' hidden'}/>`;
+}
+function typeSelectHtml(pfx, curVal) {
+  return `<select id="${pfx}-type" class="shop-type">${SHOP_TYPES.map(t => `<option value="${t}"${t === (curVal || '自用') ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+}
+function bindTargetToggle(pfx) {
+  const sel = $('#' + pfx + '-target'), other = $('#' + pfx + '-target-other');
+  if (!sel || !other) return;
+  sel.onchange = () => { const on = sel.value === '__other__'; other.hidden = !on; if (on) other.focus(); };
+}
+function readTarget(pfx) {
+  const sel = $('#' + pfx + '-target'); if (!sel) return '';
+  return sel.value === '__other__' ? $('#' + pfx + '-target-other').value.trim() : sel.value;
+}
+
+function shopMetaLine(it) {
+  const bits = [];
+  if (it.place) bits.push('📍 ' + esc(it.place));
+  if (it.type && it.type !== '自用' && it.target) bits.push('🎁 對象:' + shopShortTarget(it.target));
+  else if (it.target) bits.push('🎁 ' + shopShortTarget(it.target));
+  if (it.amount !== '' && it.amount !== null && it.amount !== undefined && !isNaN(Number(it.amount))) bits.push('💰 NT$' + Number(it.amount).toLocaleString());
+  return bits.join(' · ');
+}
+function shopCardHtml(it) {
+  if (SHOP_EDIT && SHOP_EDIT.id === it.id) return shopEditHtml(it);
+  const meta = shopMetaLine(it);
+  const pub = it.isPublic ? '<span class="notepub is-pub">🌏 公開</span>' : '<span class="notepub">🔒 私人</span>';
+  const pics = (it.images && it.images.length) ? `<div class="notepics shoppics">${it.images.map(im =>
+    `<button class="notepic" data-full="${esc(noteFull(im))}"><img src="${esc(noteThumb(im))}" loading="lazy" alt="商品照片"/></button>`).join('')}</div>` : '';
+  return `
+    <div class="shopcard${it.bought ? ' bought' : ''}${it.mine ? '' : ' other'}">
+      <label class="shopchk"><input type="checkbox" ${it.bought ? 'checked' : ''} ${it.mine ? '' : 'disabled'} data-shopbuy="${esc(it.id)}"/></label>
+      ${pics}
+      <div class="shopbody">
+        <div class="shophead">
+          <span class="shoptitle">${esc(it.name)}</span>
+          ${shopBadge(it.type)}
+          ${SHOP_SCOPE === 'public' ? `<span class="noteauthor" title="${esc(it.author || '')}">${animalOf(it.author)} ${it.mine ? '我' : esc(shortEmail(it.author))}</span>` : ''}
+          ${pub}
+        </div>
+        ${meta ? `<div class="shop-meta muted small">${meta}</div>` : ''}
+        ${it.link ? `<div class="shop-link">${linkify(it.link)}</div>` : ''}
+      </div>
+      ${it.mine ? `<div class="shopactions">
+        <button class="btn-ghost" data-sedit="${esc(it.id)}" title="編輯">✎</button>
+        <button class="notedel" data-sdel="${esc(it.id)}" title="刪除">✕</button>
+      </div>` : ''}
+    </div>`;
+}
+function shopEditHtml(it) {
+  return `
+    <div class="shopcard editing">
+      <div class="noterow1">
+        <input id="se-name" maxlength="60" value="${esc(it.name || '')}" placeholder="商品名稱"/>
+        <input id="se-place" maxlength="60" value="${esc(it.place || '')}" placeholder="購買地點"/>
+      </div>
+      <div class="noterow1">
+        ${typeSelectHtml('se', it.type)}
+        ${targetSelectHtml('se', it.target)}
+        <input id="se-amount" type="number" min="0" step="0.01" value="${esc(it.amount)}" placeholder="金額(選填)" inputmode="decimal"/>
+      </div>
+      <input id="se-link" maxlength="300" value="${esc(it.link || '')}" placeholder="商品連結(選填)" style="width:100%;box-sizing:border-box;margin-bottom:8px"/>
+      <div class="notekeeps" id="se-pics"></div>
+      <div class="noterow2">
+        <label class="notepick" for="se-files">📷 ＋ 加圖片</label>
+        <input id="se-files" type="file" accept="image/*" multiple hidden/>
+        <label class="notetog"><input id="se-bought" type="checkbox" ${it.bought ? 'checked' : ''}/> ✔ 已購買</label>
+        <label class="notetog"><input id="se-pub" type="checkbox" ${it.isPublic ? 'checked' : ''}/> 🌏 公開給大家看</label>
+        <span class="notebtns">
+          <button id="se-cancel" class="btn-ghost">取消</button>
+          <button id="se-save" class="btn">儲存修改</button>
+        </span>
+      </div>
+      <p id="se-status" class="muted small" hidden></p>
+    </div>`;
+}
+function drawShopping() {
+  const list = sortedShop();
+  const mineView = SHOP_SCOPE === 'mine';
+  const form = mineView ? `
+    <div class="noteform shopform">
+      <div class="noterow1">
+        <input id="s-name" maxlength="60" placeholder="商品名稱"/>
+        <input id="s-place" maxlength="60" placeholder="購買地點(例:Olive Young)"/>
+      </div>
+      <div class="noterow1">
+        ${typeSelectHtml('s', '自用')}
+        ${targetSelectHtml('s', '')}
+        <input id="s-amount" type="number" min="0" step="0.01" placeholder="金額(選填)" inputmode="decimal"/>
+      </div>
+      <input id="s-link" maxlength="300" placeholder="商品連結(選填)" style="width:100%;box-sizing:border-box;margin-bottom:8px"/>
+      <div class="noterow2">
+        <label class="notepick" for="s-files">📷 ＋ 加圖片(最多${SHOP_MAX}張)</label>
+        <input id="s-files" type="file" accept="image/*" multiple hidden/>
+        <div id="s-previews" class="notepreviews"></div>
+        <label class="notetog"><input id="s-pub" type="checkbox"/> 🌏 公開給大家看</label>
+        <button id="s-add" class="btn noteadd">＋ 加入清單</button>
+      </div>
+      <p id="s-status" class="muted small" hidden></p>
+    </div>` : `<p class="notehint muted small">這裡是大家公開的購物清單;想新增或修改,切回「${animalOf(myEmail())} 自己的購物清單」。你自己公開的項目在這裡也能編輯。</p>`;
+  const unbought = list.filter(x => !x.bought), bought = list.filter(x => x.bought);
+  const listHtml = list.length
+    ? unbought.map(shopCardHtml).join('')
+      + (bought.length ? `<div class="shop-sep">— 已購買(${bought.length}) —</div>` + bought.map(shopCardHtml).join('') : '')
+    : `<p class="muted noteempty">${mineView ? '還沒有想買的東西,先加一筆吧!' : '還沒有人公開購物清單。'}</p>`;
+  $('#content').innerHTML = `
+    <div class="section-title">🛒 購物清單 <span class="muted small">${mineView ? '(私人項目只有你自己看得到)' : '(所有人的公開項目)'}</span></div>
+    <div class="seg noteseg">
+      <button id="ss-mine" class="seg-btn ${mineView ? 'active' : ''}">${animalOf(myEmail())} 自己的購物清單</button>
+      <button id="ss-all" class="seg-btn ${mineView ? '' : 'active'}">🌏 大家的購物清單</button>
+    </div>
+    ${form}
+    <div class="notebar"><span class="muted small">共 ${list.length} 項</span></div>
+    ${listHtml}`;
+  $('#ss-mine').onclick = () => switchShopScope('mine');
+  $('#ss-all').onclick = () => switchShopScope('public');
+  if (mineView) {
+    $('#s-files').onchange = onPickShopImgs;
+    $('#s-add').onclick = onAddShop;
+    bindTargetToggle('s');
+    drawShopPreviews();
+  }
+  $('#content').querySelectorAll('[data-shopbuy]').forEach(c => c.onchange = () => onToggleBought(c.dataset.shopbuy, c.checked));
+  $('#content').querySelectorAll('[data-sedit]').forEach(b => b.onclick = () => startShopEdit(b.dataset.sedit));
+  $('#content').querySelectorAll('[data-sdel]').forEach(b => b.onclick = () => onDelShop(b.dataset.sdel));
+  $('#content').querySelectorAll('[data-full]').forEach(b => b.onclick = () => openNoteLightbox(b.dataset.full));
+  bindShopEdit();
+}
+function drawShopPreviews() {
+  const host = $('#s-previews'); if (!host) return;
+  host.innerHTML = SHOP_IMGS.map((im, i) =>
+    `<span class="notepv"><img src="${esc(im.dataURL)}" alt="${esc(im.name)}"/><button data-pvdel="${i}" title="移除">✕</button></span>`).join('');
+  host.querySelectorAll('[data-pvdel]').forEach(b => b.onclick = () => { SHOP_IMGS.splice(+b.dataset.pvdel, 1); drawShopPreviews(); });
+}
+function shopStatus(t) { const el = $('#s-status'); if (el) { el.hidden = !t; el.textContent = t; } }
+async function onPickShopImgs(e) {
+  const files = Array.from(e.target.files || []); e.target.value = '';
+  if (!files.length) return;
+  if (SHOP_IMGS.length + files.length > SHOP_MAX) { alert('每項最多 ' + SHOP_MAX + ' 張圖片'); return; }
+  shopStatus('圖片壓縮中…');
+  try { for (const f of files) SHOP_IMGS.push(await compressImage(f)); shopStatus(''); }
+  catch (err) { shopStatus(''); alert(err.message); }
+  drawShopPreviews();
+}
+async function onAddShop() {
+  if (SHOP_BUSY) return;
+  const name = $('#s-name').value.trim();
+  if (!name) { alert('請填商品名稱'); return; }
+  const place = $('#s-place').value.trim(), link = $('#s-link').value.trim();
+  const type = $('#s-type').value, target = readTarget('s');
+  const amtRaw = $('#s-amount').value.trim(), amount = amtRaw === '' ? '' : Number(amtRaw);
+  const isPublic = $('#s-pub').checked;
+  SHOP_BUSY = true; $('#s-add').disabled = true;
+  shopStatus(SHOP_IMGS.length ? '上傳中…(圖片較多要等一下)' : '儲存中…');
+  try {
+    const base = { name, place, link, type, target, amount, isPublic, bought: false, mine: true, author: myEmail(), updatedAt: shopNowStr() };
+    if (DEV) {
+      const item = Object.assign({ id: 's' + Date.now(), images: SHOP_IMGS.map(im => im.dataURL) }, base);
+      const all = devShopAll(); all.push(item); devShopSave(all); SHOP.push(item);
+    } else {
+      const imgs = SHOP_IMGS.map(im => ({ name: im.name, mime: 'image/jpeg', dataB64: im.dataURL.split(',')[1] }));
+      const d = await apiPost('addShopping', { spreadsheetId: TRIP.spreadsheetId, item: { name, place, link, type, target, amount, isPublic, images: imgs } });
+      SHOP.push(Object.assign({ id: d.id, images: d.images }, base));
+    }
+    SHOP_IMGS = [];
+    drawShopping();
+  } catch (e) { alert('儲存失敗:' + e.message); }
+  finally { SHOP_BUSY = false; const b = $('#s-add'); if (b) b.disabled = false; shopStatus(''); }
+}
+function startShopEdit(id) {
+  const it = SHOP.find(x => x.id === id);
+  if (!it || !it.mine || SHOP_BUSY) return;
+  SHOP_EDIT = { id, keep: (it.images || []).slice(), add: [] };
+  drawShopping();
+}
+function drawShopEditPreviews() {
+  const host = $('#se-pics'); if (!host || !SHOP_EDIT) return;
+  host.innerHTML = SHOP_EDIT.keep.map((im, i) =>
+    `<span class="notepv"><img src="${esc(noteThumb(im))}" alt="圖片"/><button data-kdel="${i}" title="移除">✕</button></span>`).join('')
+    + SHOP_EDIT.add.map((im, i) =>
+    `<span class="notepv new"><img src="${esc(im.dataURL)}" alt="${esc(im.name)}"/><button data-adel="${i}" title="移除">✕</button></span>`).join('');
+  host.querySelectorAll('[data-kdel]').forEach(b => b.onclick = () => { SHOP_EDIT.keep.splice(+b.dataset.kdel, 1); drawShopEditPreviews(); });
+  host.querySelectorAll('[data-adel]').forEach(b => b.onclick = () => { SHOP_EDIT.add.splice(+b.dataset.adel, 1); drawShopEditPreviews(); });
+}
+function bindShopEdit() {
+  if (!SHOP_EDIT) return;
+  bindTargetToggle('se');
+  drawShopEditPreviews();
+  const files = $('#se-files');
+  if (files) files.onchange = async (e) => {
+    const fs = Array.from(e.target.files || []); e.target.value = '';
+    if (!fs.length) return;
+    if (SHOP_EDIT.keep.length + SHOP_EDIT.add.length + fs.length > SHOP_MAX) { alert('每項最多 ' + SHOP_MAX + ' 張圖片'); return; }
+    try { for (const f of fs) SHOP_EDIT.add.push(await compressImage(f)); } catch (err) { alert(err.message); }
+    drawShopEditPreviews();
+  };
+  const cancel = $('#se-cancel'); if (cancel) cancel.onclick = () => { SHOP_EDIT = null; drawShopping(); };
+  const save = $('#se-save'); if (save) save.onclick = onSaveShopEdit;
+}
+async function onSaveShopEdit() {
+  if (SHOP_BUSY || !SHOP_EDIT) return;
+  const id = SHOP_EDIT.id;
+  const name = $('#se-name').value.trim();
+  if (!name) { alert('請填商品名稱'); return; }
+  const place = $('#se-place').value.trim(), link = $('#se-link').value.trim();
+  const type = $('#se-type').value, target = readTarget('se');
+  const amtRaw = $('#se-amount').value.trim(), amount = amtRaw === '' ? '' : Number(amtRaw);
+  const isPublic = $('#se-pub').checked, bought = $('#se-bought').checked;
+  SHOP_BUSY = true; $('#se-save').disabled = true;
+  const st = $('#se-status'); if (st) { st.hidden = false; st.textContent = SHOP_EDIT.add.length ? '上傳中…' : '儲存中…'; }
+  try {
+    const i = SHOP.findIndex(x => x.id === id);
+    if (DEV) {
+      const all = devShopAll(); const j = all.findIndex(x => x.id === id);
+      const upd = { name, place, link, type, target, amount, isPublic, bought, images: SHOP_EDIT.keep.concat(SHOP_EDIT.add.map(im => im.dataURL)), updatedAt: shopNowStr() };
+      if (j !== -1) { Object.assign(all[j], upd); devShopSave(all); }
+      if (i !== -1) Object.assign(SHOP[i], upd);
+    } else {
+      const newImages = SHOP_EDIT.add.map(im => ({ name: im.name, mime: 'image/jpeg', dataB64: im.dataURL.split(',')[1] }));
+      const d = await apiPost('updateShopping', { spreadsheetId: TRIP.spreadsheetId, itemId: id,
+        item: { name, place, link, type, target, amount, isPublic, bought, keepImages: SHOP_EDIT.keep, newImages } });
+      if (i !== -1) Object.assign(SHOP[i], { name, place, link, type, target, amount, isPublic, bought, images: d.images, updatedAt: shopNowStr() });
+    }
+    SHOP_EDIT = null;
+    if (SHOP_SCOPE === 'public' && !isPublic && i !== -1) SHOP.splice(i, 1);   // 大家的檢視改成私人 → 消失
+    drawShopping();
+  } catch (e) { alert('儲存失敗:' + e.message); const b = $('#se-save'); if (b) b.disabled = false; const s2 = $('#se-status'); if (s2) s2.hidden = true; }
+  finally { SHOP_BUSY = false; }
+}
+async function onToggleBought(id, bought) {
+  const it = SHOP.find(x => x.id === id);
+  if (!it || !it.mine) return;
+  it.bought = bought; it.updatedAt = shopNowStr();
+  try {
+    if (DEV) { const all = devShopAll(); const j = all.findIndex(x => x.id === id); if (j !== -1) { all[j].bought = bought; devShopSave(all); } }
+    else await apiPost('setShoppingBought', { spreadsheetId: TRIP.spreadsheetId, itemId: id, bought });
+  } catch (e) { alert('更新失敗:' + e.message); it.bought = !bought; }
+  drawShopping();
+}
+async function onDelShop(id) {
+  const it = SHOP.find(x => x.id === id);
+  if (!it || !it.mine) return;
+  if (!confirm('確定刪除這個項目?圖片也會一起刪除。')) return;
+  const i = SHOP.findIndex(x => x.id === id); if (i === -1) return;
+  const removed = SHOP.splice(i, 1)[0];
+  try {
+    if (DEV) devShopSave(devShopAll().filter(x => x.id !== id));
+    else await apiPost('deleteShopping', { spreadsheetId: TRIP.spreadsheetId, itemId: id });
+  } catch (e) { alert('刪除失敗:' + e.message); SHOP.splice(i, 0, removed); }
+  drawShopping();
 }
 
 // ---------- 行李清單(依帳號隔離;打勾=已準備,出發前一天未勾會寄信提醒)----------

@@ -338,6 +338,40 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .sp-line{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0}
 .sp-line .sp-settle{padding:2px 8px;font-size:11px}
 
+/* ---------- 購物清單 ---------- */
+.shopform select{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink)}
+.shopform select:focus{outline:2px solid var(--gold);outline-offset:-2px}
+.shopform .shop-type{flex:0 0 auto}
+.shopform .shop-target,.shopform .shop-target-other{flex:1;min-width:120px}
+.shopform #s-amount{flex:0 0 120px}
+.shopcard{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:12px;margin-bottom:10px}
+.shopcard.other{background:#fdfefd}
+.shopcard.bought{opacity:.62;background:#f4f8f6;border-color:#b9cdc4;box-shadow:3px 3px 0 #e5efea}
+.shopcard.bought .shoptitle{text-decoration:line-through;color:var(--muted)}
+.shopchk{flex:0 0 auto;padding-top:2px;margin:0}
+.shopchk input{width:18px;height:18px;accent-color:var(--green-d);cursor:pointer}
+.shoppics{margin-top:0!important;flex:0 0 auto}
+.shopcard .notepic{width:64px;height:64px}
+.shopbody{flex:1;min-width:0}
+.shophead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.shoptitle{font-size:14px;color:var(--ink)}
+.shop-meta{margin-top:3px;word-break:break-all}
+.shop-link{margin-top:3px;font-size:12px;word-break:break-all}
+.shopactions{flex:0 0 auto;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.shopactions .btn-ghost{padding:2px 8px;font-size:12px}
+.shop-sep{text-align:center;color:var(--hint);font-size:11px;margin:12px 0 8px}
+.shop-badge{font-size:11px;border:1px solid var(--line);padding:1px 7px;white-space:nowrap}
+.shop-badge.gift{background:var(--gold);color:var(--ink)}
+.shop-badge.proxy{background:var(--blue);color:#fff}
+.shop-badge.self{background:var(--green-l);color:var(--muted)}
+.shopcard.editing{display:block;outline:3px solid var(--gold);outline-offset:2px}
+.shopcard.editing input,.shopcard.editing select{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink)}
+.shopcard.editing input:focus,.shopcard.editing select:focus{outline:2px solid var(--gold);outline-offset:-2px}
+.shopcard.editing #se-name,.shopcard.editing #se-place{flex:1;min-width:140px}
+.shopcard.editing .shop-type{flex:0 0 auto}
+.shopcard.editing .shop-target,.shopcard.editing .shop-target-other{flex:1;min-width:120px}
+.shopcard.editing #se-amount{flex:0 0 120px}
+
 /* ---------- 旅遊筆記 ---------- */
 .noteform{background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:14px;margin-bottom:14px}
 .noterow1{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
