@@ -372,6 +372,23 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .shopcard.editing .shop-target,.shopcard.editing .shop-target-other{flex:1;min-width:120px}
 .shopcard.editing #se-amount{flex:0 0 120px}
 
+/* ---------- 新增彈窗(拆帳/購物/筆記共用)---------- */
+.addbar{margin-bottom:14px}
+.nmodal-card .noterow1{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.nmodal-card .noterow1 input,.nmodal-card .noterow1 select{width:auto;margin-bottom:0}
+.nmodal-card .noterow2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.nmodal-card #s-cat{flex:1;min-width:120px}
+.nmodal-card #s-rate{flex:0 0 110px}
+.nmodal-card .shop-type{flex:0 0 auto}
+.nmodal-card .shop-target,.nmodal-card .shop-target-other{flex:1;min-width:120px}
+.nmodal-card #s-amount{flex:0 0 100px}
+.nmodal-card .split-parts{display:flex;flex-direction:column;gap:6px;margin:2px 0 8px}
+.nmodal-card .split-part{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.nmodal-card .split-part .sp-nm{flex:1;min-width:150px;font-size:13px}
+.nmodal-card .split-part .sp-amt{width:130px;flex:0 0 auto;margin-bottom:0}
+.nmodal-card .notepreviews{display:flex;gap:6px;flex-wrap:wrap}
+.nmodal-card .notepick{margin-bottom:0}
+
 /* ---------- 旅遊筆記 ---------- */
 .noteform{background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:14px;margin-bottom:14px}
 .noterow1{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}

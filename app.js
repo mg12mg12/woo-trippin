@@ -781,17 +781,7 @@ async function renderSplits() {
 }
 
 function drawSplits() {
-  const rate0 = getDefaultRate();
   const me = SPLIT_ME;
-  const cats = EXP_CATS.map(c => `<option value="${c}">${c}</option>`).join('');
-  // 分攤金額輸入列:白名單每人一格,我標示為付款人
-  const partRows = SPLIT_EMAILS.map(em => {
-    const isMe = String(em).toLowerCase() === me;
-    return `<div class="split-part">
-      <span class="sp-nm">${animalOf(em)} ${esc(em)}${isMe ? ' <b>(我·付款人)</b>' : ''}</span>
-      <input type="number" min="0" step="0.01" class="sp-amt" data-em="${esc(em)}" placeholder="分攤金額" inputmode="decimal"/>
-    </div>`;
-  }).join('');
 
   // 結算摘要
   const { net, transfers } = computeSettlement(SPLITS);
@@ -831,18 +821,7 @@ function drawSplits() {
 
   $('#content').innerHTML = `
     <div class="section-title">💸 拆帳 <span class="muted small">(付款人與被分帳的人都看得到)</span></div>
-    <div class="splitform">
-      <div class="splitform-top">
-        <input id="s-item" placeholder="項目名稱(例:第一天晚餐)"/>
-        <select id="s-cat">${cats}</select>
-        <input id="s-rate" type="number" step="0.0001" value="${rate0}" title="匯率(原幣換台幣)"/>
-      </div>
-      <div class="muted small" style="margin:4px 0">填每個人各分攤多少(原幣),沒份的留空。你是付款人。</div>
-      <div class="split-parts">${partRows}</div>
-      <div class="exptotal">原幣總額 <b id="s-total">0</b> · 台幣約 <b id="s-total-twd">NT$0</b></div>
-      <input id="s-note" placeholder="備註(選填)" style="width:100%;box-sizing:border-box"/>
-      <div style="margin-top:8px"><button id="s-add" class="btn">＋ 記一筆拆帳</button></div>
-    </div>
+    <div class="addbar"><button id="k-open" class="btn">＋ 記一筆拆帳</button></div>
     <div class="section-title" style="margin-top:8px">💰 結算(最少還款次數)</div>
     <div class="settle-box">${summaryHtml}</div>
     <div class="tablewrap"${SPLITS.length ? '' : ' hidden'} style="margin-top:12px">
@@ -851,20 +830,59 @@ function drawSplits() {
     </div>
     ${SPLITS.length ? '' : '<p class="muted" style="padding:8px 0">還沒有拆帳紀錄,先在上面記一筆。</p>'}`;
 
-  const recalc = () => {
-    let sum = 0;
-    $('#content').querySelectorAll('.sp-amt').forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v) && v > 0) sum += v; });
-    const rate = parseFloat($('#s-rate').value) || 0;
-    $('#s-total').textContent = sum.toLocaleString();
-    $('#s-total-twd').textContent = 'NT$' + Math.round(sum * rate).toLocaleString();
-  };
-  $('#content').querySelectorAll('.sp-amt').forEach(inp => inp.oninput = recalc);
-  $('#s-rate').oninput = recalc;
-  $('#s-add').onclick = onAddSplit;
+  $('#k-open').onclick = openSplitModal;
   $('#content').querySelectorAll('.sp-settle').forEach(b => b.onclick = () => onToggleSettle(b.dataset.sid, b.dataset.em, b.dataset.done !== '1'));
   $('#content').querySelectorAll('[data-delsplit]').forEach(b => b.onclick = () => onDelSplit(b.dataset.delsplit));
 }
 function shortEmail(em) { const s = String(em || ''); const i = s.indexOf('@'); return i === -1 ? s : s.slice(0, i); }
+function openSplitModal() {
+  const rate0 = getDefaultRate();
+  const me = SPLIT_ME;
+  const cats = EXP_CATS.map(c => `<option value="${c}">${c}</option>`).join('');
+  const partRows = SPLIT_EMAILS.map(em => {
+    const isMe = String(em).toLowerCase() === me;
+    return `<div class="split-part">
+      <span class="sp-nm">${animalOf(em)} ${esc(em)}${isMe ? ' <b>(我·付款人)</b>' : ''}</span>
+      <input type="number" min="0" step="0.01" class="sp-amt" data-em="${esc(em)}" placeholder="分攤金額" inputmode="decimal"/>
+    </div>`;
+  }).join('');
+  const ov = document.createElement('div');
+  ov.className = 'nmodal addmodal';
+  ov.innerHTML = `
+    <div class="nmodal-card">
+      <div class="nmodal-title">💸 記一筆拆帳</div>
+      <div class="nmodal-sec">項目名稱</div>
+      <input id="s-item" placeholder="例:第一天晚餐"/>
+      <div class="nmodal-sec">分類 / 匯率</div>
+      <div class="noterow1">
+        <select id="s-cat">${cats}</select>
+        <input id="s-rate" type="number" step="0.0001" value="${rate0}" title="匯率(原幣換台幣)"/>
+      </div>
+      <div class="nmodal-sec">分攤金額(原幣,沒份的留空;你是付款人)</div>
+      <div class="split-parts">${partRows}</div>
+      <div class="exptotal">原幣總額 <b id="s-total">0</b> · 台幣約 <b id="s-total-twd">NT$0</b></div>
+      <div class="nmodal-sec">備註(選填)</div>
+      <input id="s-note" placeholder="備註"/>
+      <div class="nmodal-btns">
+        <button id="s-cancel" class="btn-ghost">取消</button>
+        <button id="s-add" class="btn">＋ 記一筆拆帳</button>
+      </div>
+      <p id="s-status" class="muted small" hidden></p>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.querySelector('#s-cancel').onclick = () => ov.remove();
+  const recalc = () => {
+    let sum = 0;
+    ov.querySelectorAll('.sp-amt').forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v) && v > 0) sum += v; });
+    const rate = parseFloat(ov.querySelector('#s-rate').value) || 0;
+    ov.querySelector('#s-total').textContent = sum.toLocaleString();
+    ov.querySelector('#s-total-twd').textContent = 'NT$' + Math.round(sum * rate).toLocaleString();
+  };
+  ov.querySelectorAll('.sp-amt').forEach(inp => inp.oninput = recalc);
+  ov.querySelector('#s-rate').oninput = recalc;
+  ov.querySelector('#s-add').onclick = onAddSplit;
+}
 
 async function onAddSplit() {
   const item = $('#s-item').value.trim();
@@ -872,7 +890,7 @@ async function onAddSplit() {
   const rate = parseFloat($('#s-rate').value) || getDefaultRate();
   const note = $('#s-note').value.trim();
   const shares = [];
-  $('#content').querySelectorAll('.sp-amt').forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v) && v > 0) shares.push({ email: inp.dataset.em.toLowerCase(), amount: v }); });
+  document.querySelectorAll('.sp-amt').forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v) && v > 0) shares.push({ email: inp.dataset.em.toLowerCase(), amount: v }); });
   if (!item) { alert('請填項目名稱'); return; }
   if (!shares.length) { alert('請至少填一個人的分攤金額'); return; }
   const btn = $('#s-add'); btn.disabled = true;
@@ -888,6 +906,7 @@ async function onAddSplit() {
       SPLITS = await loadSplits();
     }
   } catch (e) { btn.disabled = false; alert('儲存失敗:' + e.message); return; }
+  closeAddModal();
   drawSplits();
 }
 
@@ -1020,22 +1039,9 @@ function noteEditHtml(n) {
 function drawNotes() {
   const list = sortedNotes();
   const mineView = NOTES_SCOPE === 'mine';
-  const form = mineView ? `
-    <div class="noteform">
-      <div class="noterow1">
-        <input id="n-date" type="date" value="${todayStr()}"/>
-        <input id="n-title" maxlength="60" placeholder="標題(例:LCK初體驗!)"/>
-      </div>
-      <textarea id="n-text" rows="3" maxlength="2000" placeholder="在金魚腦忘記之前記點筆記吧!"></textarea>
-      <div class="noterow2">
-        <label class="notepick" for="n-files">📷 ＋ 加照片(可多張)</label>
-        <input id="n-files" type="file" accept="image/*" multiple hidden/>
-        <div id="n-previews" class="notepreviews"></div>
-        <label class="notetog"><input id="n-pub" type="checkbox"/> 🌏 公開給大家看</label>
-        <button id="n-add" class="btn noteadd">✎ 記下來</button>
-      </div>
-      <p id="n-status" class="muted small" hidden></p>
-    </div>` : `<p class="notehint muted small">這裡是大家公開的筆記;想新增或修改,切回「${animalOf((USER && USER.email) || '')} 自己的旅行筆記」。你自己的公開筆記在這裡也能編輯。</p>`;
+  const form = mineView
+    ? `<div class="addbar"><button id="n-open" class="btn">✎ 寫筆記</button></div>`
+    : `<p class="notehint muted small">這裡是大家公開的筆記;想新增或修改,切回「${animalOf((USER && USER.email) || '')} 自己的旅行筆記」。你自己的公開筆記在這裡也能編輯。</p>`;
   $('#content').innerHTML = `
     <div class="section-title">📓 旅遊筆記 <span class="muted small">${mineView ? '(私人筆記只有你自己看得到)' : '(所有人的公開筆記)'}</span></div>
     <div class="seg noteseg">
@@ -1051,11 +1057,7 @@ function drawNotes() {
   $('#ns-mine').onclick = () => switchNoteScope('mine');
   $('#ns-all').onclick = () => switchNoteScope('public');
   $('#n-sort').onclick = () => { NOTES_DESC = !NOTES_DESC; drawNotes(); };
-  if (mineView) {
-    $('#n-files').onchange = onPickNoteImgs;
-    $('#n-add').onclick = onAddNote;
-    drawNotePreviews();
-  }
+  if (mineView) $('#n-open').onclick = openNoteModal;
   $('#content').querySelectorAll('[data-ndel]').forEach(b => b.onclick = () => onDelNote(b.dataset.ndel));
   $('#content').querySelectorAll('[data-nedit]').forEach(b => b.onclick = () => startNoteEdit(b.dataset.nedit));
   $('#content').querySelectorAll('[data-full]').forEach(b => b.onclick = () => openNoteLightbox(b.dataset.full));
@@ -1135,6 +1137,40 @@ async function onPickNoteImgs(e) {
   drawNotePreviews();
 }
 function noteStatus(t) { const el = $('#n-status'); if (el) { el.hidden = !t; el.textContent = t; } }
+// 新增用的彈窗:成功送出後由各 onAddXXX 呼叫關閉
+function closeAddModal() { document.querySelectorAll('.nmodal.addmodal').forEach(o => o.remove()); }
+function openNoteModal() {
+  NOTE_IMGS = [];
+  const ov = document.createElement('div');
+  ov.className = 'nmodal addmodal';
+  ov.innerHTML = `
+    <div class="nmodal-card">
+      <div class="nmodal-title">📓 寫筆記</div>
+      <div class="nmodal-sec">日期</div>
+      <input id="n-date" type="date" value="${todayStr()}"/>
+      <div class="nmodal-sec">標題</div>
+      <input id="n-title" maxlength="60" placeholder="標題(例:LCK初體驗!)"/>
+      <div class="nmodal-sec">內容</div>
+      <textarea id="n-text" rows="4" maxlength="2000" placeholder="在金魚腦忘記之前記點筆記吧!"></textarea>
+      <div class="noterow2">
+        <label class="notepick" for="n-files">📷 ＋ 加照片(可多張)</label>
+        <input id="n-files" type="file" accept="image/*" multiple hidden/>
+        <div id="n-previews" class="notepreviews"></div>
+      </div>
+      <label class="notetog"><input id="n-pub" type="checkbox"/> 🌏 公開給大家看</label>
+      <div class="nmodal-btns">
+        <button id="n-cancel" class="btn-ghost">取消</button>
+        <button id="n-add" class="btn">✎ 記下來</button>
+      </div>
+      <p id="n-status" class="muted small" hidden></p>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.querySelector('#n-cancel').onclick = () => ov.remove();
+  ov.querySelector('#n-files').onchange = onPickNoteImgs;
+  ov.querySelector('#n-add').onclick = onAddNote;
+  drawNotePreviews();
+}
 async function onAddNote() {
   if (NOTE_BUSY) return;
   const date = $('#n-date').value, title = $('#n-title').value.trim(), text = $('#n-text').value.trim();
@@ -1155,6 +1191,7 @@ async function onAddNote() {
       NOTES.push(Object.assign({ id: d.id, images: d.images }, base));
     }
     NOTE_IMGS = [];
+    closeAddModal();
     drawNotes();
   } catch (e) { alert('儲存失敗:' + e.message); }
   finally { NOTE_BUSY = false; const b = $('#n-add'); if (b) b.disabled = false; noteStatus(''); }
@@ -1306,27 +1343,9 @@ function shopEditHtml(it) {
 function drawShopping() {
   const list = sortedShop();
   const mineView = SHOP_SCOPE === 'mine';
-  const form = mineView ? `
-    <div class="noteform shopform">
-      <div class="noterow1">
-        <input id="s-name" maxlength="60" placeholder="商品名稱"/>
-        <input id="s-place" maxlength="60" placeholder="購買地點(例:Olive Young)"/>
-      </div>
-      <div class="noterow1">
-        ${typeSelectHtml('s', '自用')}
-        ${targetSelectHtml('s', '')}
-        <input id="s-amount" type="number" min="0" step="0.01" placeholder="金額(選填)" inputmode="decimal"/>
-      </div>
-      <input id="s-link" maxlength="300" placeholder="商品連結(選填)" style="width:100%;box-sizing:border-box;margin-bottom:8px"/>
-      <div class="noterow2">
-        <label class="notepick" for="s-files">📷 ＋ 加圖片(最多${SHOP_MAX}張)</label>
-        <input id="s-files" type="file" accept="image/*" multiple hidden/>
-        <div id="s-previews" class="notepreviews"></div>
-        <label class="notetog"><input id="s-pub" type="checkbox"/> 🌏 公開給大家看</label>
-        <button id="s-add" class="btn noteadd">＋ 加入清單</button>
-      </div>
-      <p id="s-status" class="muted small" hidden></p>
-    </div>` : `<p class="notehint muted small">這裡是大家公開的購物清單;想新增或修改,切回「${animalOf(myEmail())} 自己的購物清單」。你自己公開的項目在這裡也能編輯。</p>`;
+  const form = mineView
+    ? `<div class="addbar"><button id="s-open" class="btn">＋ 新增商品</button></div>`
+    : `<p class="notehint muted small">這裡是大家公開的購物清單;想新增或修改,切回「${animalOf(myEmail())} 自己的購物清單」。你自己公開的項目在這裡也能編輯。</p>`;
   const unbought = list.filter(x => !x.bought), bought = list.filter(x => x.bought);
   const listHtml = list.length
     ? unbought.map(shopCardHtml).join('')
@@ -1343,12 +1362,7 @@ function drawShopping() {
     ${listHtml}`;
   $('#ss-mine').onclick = () => switchShopScope('mine');
   $('#ss-all').onclick = () => switchShopScope('public');
-  if (mineView) {
-    $('#s-files').onchange = onPickShopImgs;
-    $('#s-add').onclick = onAddShop;
-    bindTargetToggle('s');
-    drawShopPreviews();
-  }
+  if (mineView) $('#s-open').onclick = openShopModal;
   $('#content').querySelectorAll('[data-shopbuy]').forEach(c => c.onchange = () => onToggleBought(c.dataset.shopbuy, c.checked));
   $('#content').querySelectorAll('[data-sedit]').forEach(b => b.onclick = () => startShopEdit(b.dataset.sedit));
   $('#content').querySelectorAll('[data-sdel]').forEach(b => b.onclick = () => onDelShop(b.dataset.sdel));
@@ -1362,6 +1376,45 @@ function drawShopPreviews() {
   host.querySelectorAll('[data-pvdel]').forEach(b => b.onclick = () => { SHOP_IMGS.splice(+b.dataset.pvdel, 1); drawShopPreviews(); });
 }
 function shopStatus(t) { const el = $('#s-status'); if (el) { el.hidden = !t; el.textContent = t; } }
+function openShopModal() {
+  SHOP_IMGS = [];
+  const ov = document.createElement('div');
+  ov.className = 'nmodal addmodal';
+  ov.innerHTML = `
+    <div class="nmodal-card">
+      <div class="nmodal-title">🛒 新增商品</div>
+      <div class="nmodal-sec">商品名稱</div>
+      <input id="s-name" maxlength="60" placeholder="商品名稱"/>
+      <div class="nmodal-sec">購買地點</div>
+      <input id="s-place" maxlength="60" placeholder="例:Olive Young"/>
+      <div class="nmodal-sec">類型 / 對象 / 金額</div>
+      <div class="noterow1">
+        ${typeSelectHtml('s', '自用')}
+        ${targetSelectHtml('s', '')}
+        <input id="s-amount" type="number" min="0" step="0.01" placeholder="金額(選填)" inputmode="decimal"/>
+      </div>
+      <div class="nmodal-sec">商品連結(選填)</div>
+      <input id="s-link" maxlength="300" placeholder="貼上商品網址"/>
+      <div class="noterow2">
+        <label class="notepick" for="s-files">📷 ＋ 加圖片(最多${SHOP_MAX}張)</label>
+        <input id="s-files" type="file" accept="image/*" multiple hidden/>
+        <div id="s-previews" class="notepreviews"></div>
+      </div>
+      <label class="notetog"><input id="s-pub" type="checkbox"/> 🌏 公開給大家看</label>
+      <div class="nmodal-btns">
+        <button id="s-cancel" class="btn-ghost">取消</button>
+        <button id="s-add" class="btn">＋ 加入清單</button>
+      </div>
+      <p id="s-status" class="muted small" hidden></p>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  ov.querySelector('#s-cancel').onclick = () => ov.remove();
+  ov.querySelector('#s-files').onchange = onPickShopImgs;
+  ov.querySelector('#s-add').onclick = onAddShop;
+  bindTargetToggle('s');
+  drawShopPreviews();
+}
 async function onPickShopImgs(e) {
   const files = Array.from(e.target.files || []); e.target.value = '';
   if (!files.length) return;
@@ -1392,6 +1445,7 @@ async function onAddShop() {
       SHOP.push(Object.assign({ id: d.id, images: d.images }, base));
     }
     SHOP_IMGS = [];
+    closeAddModal();
     drawShopping();
   } catch (e) { alert('儲存失敗:' + e.message); }
   finally { SHOP_BUSY = false; const b = $('#s-add'); if (b) b.disabled = false; shopStatus(''); }
