@@ -388,6 +388,16 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .nmodal-card .split-part .sp-amt{width:130px;flex:0 0 auto;margin-bottom:0}
 .nmodal-card .notepreviews{display:flex;gap:6px;flex-wrap:wrap}
 .nmodal-card .notepick{margin-bottom:0}
+.nmodal-card #s-payer{flex:1;min-width:120px}
+.nmodal-card #s-total-input{flex:1;min-width:120px}
+.split-mode{margin:2px 0 6px;display:flex}
+.split-mode .seg-btn{flex:1;text-align:center}
+.split-hint{font-size:11px;color:#a5762a;background:#fffbe9;border:1px solid #f6cf63;padding:4px 7px;margin:0 0 8px}
+.nmodal-card .split-part .sp-on{width:16px;height:16px;accent-color:var(--green-d);flex:0 0 auto;margin:0}
+.nmodal-card .split-part .sp-amt.auto{background:#fffbe9;border-color:#f6cf63}
+.nmodal-card .split-part .sp-amt:disabled{background:#eef1ef;opacity:.6}
+.split-alloc{margin:0 0 6px}
+.split-alloc.mismatch{color:var(--rose)}
 
 /* ---------- 旅遊筆記 ---------- */
 .noteform{background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:14px;margin-bottom:14px}

@@ -839,13 +839,14 @@ function openSplitModal() {
   const rate0 = getDefaultRate();
   const me = SPLIT_ME;
   const cats = EXP_CATS.map(c => `<option value="${c}">${c}</option>`).join('');
-  const partRows = SPLIT_EMAILS.map(em => {
-    const isMe = String(em).toLowerCase() === me;
-    return `<div class="split-part">
-      <span class="sp-nm">${animalOf(em)} ${esc(em)}${isMe ? ' <b>(我·付款人)</b>' : ''}</span>
-      <input type="number" min="0" step="0.01" class="sp-amt" data-em="${esc(em)}" placeholder="分攤金額" inputmode="decimal"/>
-    </div>`;
-  }).join('');
+  const payerOpts = SPLIT_EMAILS.map(em => { const low = String(em).toLowerCase();
+    return `<option value="${esc(low)}"${low === me ? ' selected' : ''}>${animalOf(em)} ${esc(shortEmail(em))}${low === me ? '(我)' : ''}</option>`; }).join('');
+  const partRows = SPLIT_EMAILS.map(em => { const low = String(em).toLowerCase();
+    return `<div class="split-part" data-em="${esc(low)}">
+      <input type="checkbox" class="sp-on" checked data-em="${esc(low)}"/>
+      <span class="sp-nm">${animalOf(em)} ${esc(shortEmail(em))} <b class="sp-payer" data-em="${esc(low)}"${low === me ? '' : ' hidden'}>(付款人)</b></span>
+      <input type="number" min="0" step="0.01" class="sp-amt" data-em="${esc(low)}" placeholder="分攤金額" inputmode="decimal"/>
+    </div>`; }).join('');
   const ov = document.createElement('div');
   ov.className = 'nmodal addmodal';
   ov.innerHTML = `
@@ -853,13 +854,25 @@ function openSplitModal() {
       <div class="nmodal-title">💸 記一筆拆帳</div>
       <div class="nmodal-sec">項目名稱</div>
       <input id="s-item" placeholder="例:第一天晚餐"/>
-      <div class="nmodal-sec">分類 / 匯率</div>
+      <div class="nmodal-sec">分類 / 付款人</div>
       <div class="noterow1">
         <select id="s-cat">${cats}</select>
+        <select id="s-payer">${payerOpts}</select>
+      </div>
+      <div class="nmodal-sec">總金額 / 匯率</div>
+      <div class="noterow1">
+        <input id="s-total-input" type="number" min="0" step="0.01" placeholder="總金額(原幣)" inputmode="decimal"/>
         <input id="s-rate" type="number" step="0.0001" value="${rate0}" title="匯率(原幣換台幣)"/>
       </div>
-      <div class="nmodal-sec">分攤金額(原幣,沒份的留空;你是付款人)</div>
+      <div class="nmodal-sec">分配方式</div>
+      <div class="split-mode seg">
+        <button type="button" class="seg-btn active" data-mode="free">自由分配</button>
+        <button type="button" class="seg-btn" data-mode="avg">平均分配</button>
+      </div>
+      <div id="s-avg-hint" class="split-hint" hidden>💡 平均分配:總金額 ÷ 參與人數,除不盡時每人無條件進位</div>
+      <div class="nmodal-sec">參與者(勾選誰要分攤;黃底=自動計算,可自行修改)</div>
       <div class="split-parts">${partRows}</div>
+      <div id="s-alloc" class="split-alloc muted small"></div>
       <div class="exptotal">原幣總額 <b id="s-total">0</b> · 台幣約 <b id="s-total-twd">NT$0</b></div>
       <div class="nmodal-sec">備註(選填)</div>
       <input id="s-note" placeholder="備註"/>
@@ -872,16 +885,66 @@ function openSplitModal() {
   document.body.appendChild(ov);
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
   ov.querySelector('#s-cancel').onclick = () => ov.remove();
-  const recalc = () => {
+
+  let mode = 'free';
+  const round2 = (v) => Math.round(v * 100) / 100;
+  const rateVal = () => parseFloat(ov.querySelector('#s-rate').value) || 0;
+  const totalVal = () => { const v = parseFloat(ov.querySelector('#s-total-input').value); return isNaN(v) ? 0 : v; };
+  const rows = () => Array.from(ov.querySelectorAll('.split-part'));
+  const setAuto = (amt, val) => { amt.value = round2(val <= 0 ? 0 : val); amt.dataset.auto = '1'; amt.classList.add('auto'); };
+  const clearAuto = (amt) => { delete amt.dataset.auto; amt.classList.remove('auto'); };
+
+  function averageFill() {
+    const t = totalVal();
+    rows().forEach(r => { const on = r.querySelector('.sp-on').checked; const amt = r.querySelector('.sp-amt'); if (!on) { amt.value = ''; clearAuto(amt); delete amt.dataset.manual; } });
+    const checked = rows().filter(r => r.querySelector('.sp-on').checked);
+    if (t > 0 && checked.length) { const per = Math.ceil(t / checked.length); checked.forEach(r => { const amt = r.querySelector('.sp-amt'); setAuto(amt, per); delete amt.dataset.manual; }); }
+  }
+  function freeAutoFill() {
+    rows().forEach(r => { if (!r.querySelector('.sp-on').checked) { const a = r.querySelector('.sp-amt'); a.value = ''; clearAuto(a); delete a.dataset.manual; } });
+    const t = totalVal();
+    const checked = rows().filter(r => r.querySelector('.sp-on').checked);
+    if (t <= 0) { checked.forEach(r => { const a = r.querySelector('.sp-amt'); if (a.dataset.auto) { a.value = ''; clearAuto(a); } }); return; }
+    const manual = checked.filter(r => { const a = r.querySelector('.sp-amt'); return a.dataset.manual === '1' && a.value.trim() !== ''; });
+    const autoCands = checked.filter(r => manual.indexOf(r) === -1);
+    const filledSum = manual.reduce((s, r) => s + (parseFloat(r.querySelector('.sp-amt').value) || 0), 0);
+    if (autoCands.length === 1) { setAuto(autoCands[0].querySelector('.sp-amt'), t - filledSum); }
+    else { autoCands.forEach(r => { const a = r.querySelector('.sp-amt'); if (a.dataset.auto) { a.value = ''; clearAuto(a); } }); }
+  }
+  function recalcTotals() {
     let sum = 0;
-    ov.querySelectorAll('.sp-amt').forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v) && v > 0) sum += v; });
-    const rate = parseFloat(ov.querySelector('#s-rate').value) || 0;
+    rows().forEach(r => { if (r.querySelector('.sp-on').checked) { const v = parseFloat(r.querySelector('.sp-amt').value); if (!isNaN(v) && v > 0) sum += v; } });
+    sum = round2(sum);
     ov.querySelector('#s-total').textContent = sum.toLocaleString();
-    ov.querySelector('#s-total-twd').textContent = 'NT$' + Math.round(sum * rate).toLocaleString();
-  };
-  ov.querySelectorAll('.sp-amt').forEach(inp => inp.oninput = recalc);
-  ov.querySelector('#s-rate').oninput = recalc;
+    ov.querySelector('#s-total-twd').textContent = 'NT$' + Math.round(sum * rateVal()).toLocaleString();
+    const t = totalVal(); const alloc = ov.querySelector('#s-alloc');
+    if (t > 0) {
+      const rem = round2(t - sum);
+      let msg = `已分配 ${sum.toLocaleString()} / 剩餘 ${rem.toLocaleString()}`;
+      const bad = Math.abs(rem) > 0.005;
+      if (bad) msg += ' ⚠ 與總金額不符(仍可送出)';
+      alloc.textContent = msg; alloc.classList.toggle('mismatch', bad);
+    } else { alloc.textContent = ''; alloc.classList.remove('mismatch'); }
+  }
+  function refresh() { if (mode === 'avg') averageFill(); else freeAutoFill(); recalcTotals(); }
+
+  ov.querySelector('#s-total-input').oninput = refresh;
+  ov.querySelector('#s-rate').oninput = recalcTotals;
+  rows().forEach(r => {
+    const cb = r.querySelector('.sp-on'), amt = r.querySelector('.sp-amt');
+    cb.onchange = () => { amt.disabled = !cb.checked; refresh(); };
+    amt.oninput = () => { if (amt.value.trim() === '') delete amt.dataset.manual; else { amt.dataset.manual = '1'; clearAuto(amt); } if (mode === 'free') freeAutoFill(); recalcTotals(); };
+  });
+  ov.querySelectorAll('.split-mode .seg-btn').forEach(b => b.onclick = () => {
+    ov.querySelectorAll('.split-mode .seg-btn').forEach(x => x.classList.remove('active')); b.classList.add('active');
+    mode = b.dataset.mode;
+    ov.querySelector('#s-avg-hint').hidden = mode !== 'avg';
+    if (mode === 'avg') rows().forEach(r => delete r.querySelector('.sp-amt').dataset.manual);
+    refresh();
+  });
+  ov.querySelector('#s-payer').onchange = () => { const p = ov.querySelector('#s-payer').value; ov.querySelectorAll('.sp-payer').forEach(el => { el.hidden = el.dataset.em !== p; }); };
   ov.querySelector('#s-add').onclick = onAddSplit;
+  recalcTotals();
 }
 
 async function onAddSplit() {
@@ -889,20 +952,26 @@ async function onAddSplit() {
   const category = $('#s-cat').value;
   const rate = parseFloat($('#s-rate').value) || getDefaultRate();
   const note = $('#s-note').value.trim();
+  const payer = ($('#s-payer') ? $('#s-payer').value : SPLIT_ME).toLowerCase() || SPLIT_ME;
   const shares = [];
-  document.querySelectorAll('.sp-amt').forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v) && v > 0) shares.push({ email: inp.dataset.em.toLowerCase(), amount: v }); });
+  document.querySelectorAll('.split-part').forEach(r => {
+    const cb = r.querySelector('.sp-on'); if (!cb || !cb.checked) return;
+    const a = r.querySelector('.sp-amt'); const v = parseFloat(a.value);
+    if (!isNaN(v) && v > 0) shares.push({ email: a.dataset.em.toLowerCase(), amount: v });
+  });
   if (!item) { alert('請填項目名稱'); return; }
   if (!shares.length) { alert('請至少填一個人的分攤金額'); return; }
   const btn = $('#s-add'); btn.disabled = true;
   try {
     if (DEV) {
       const id = 'S' + Date.now();
-      SPLITS.push({ id, createdAt: new Date().toISOString(), payer: SPLIT_ME, item, category, rate, totalOrig: shares.reduce((a, s) => a + s.amount, 0), totalTwd: Math.round(shares.reduce((a, s) => a + s.amount, 0) * rate), shares, settled: {}, note });
+      const totalOrig = shares.reduce((a, s) => a + s.amount, 0);
+      SPLITS.push({ id, createdAt: new Date().toISOString(), payer, item, category, rate, totalOrig, totalTwd: Math.round(totalOrig * rate), shares, settled: {}, note });
       localStorage.setItem('split:' + TRIP.id, JSON.stringify(SPLITS));
       const mine = shares.find(s => s.email === SPLIT_ME);
       if (mine) devAddExpense({ name: item, category, amount: mine.amount, rate }, id);
     } else {
-      await apiPost('addSplit', { spreadsheetId: TRIP.spreadsheetId, split: { item, category, rate, note, shares } });
+      await apiPost('addSplit', { spreadsheetId: TRIP.spreadsheetId, split: { item, category, rate, note, shares, payer } });
       SPLITS = await loadSplits();
     }
   } catch (e) { btn.disabled = false; alert('儲存失敗:' + e.message); return; }
