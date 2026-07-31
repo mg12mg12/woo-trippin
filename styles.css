@@ -342,8 +342,30 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .shopform select{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink)}
 .shopform select:focus{outline:2px solid var(--gold);outline-offset:-2px}
 .shopform .shop-type{flex:0 0 auto}
-.shopform .shop-target,.shopform .shop-target-other{flex:1;min-width:120px}
 .shopform #s-amount{flex:0 0 120px}
+
+/* 對象:可多選勾選 + 自行新增 */
+.shop-targets{border:2px solid var(--line);background:#fff;padding:8px 9px;margin-bottom:8px}
+.shop-tgt-head{margin-bottom:6px}
+.shop-tgt-head b{color:var(--green-d);font-weight:400}
+.shop-tgt-opts{display:flex;gap:6px;flex-wrap:wrap}
+.shop-tgt-opt{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--green-l);padding:4px 8px;font-size:12px;color:var(--muted);cursor:pointer;margin:0}
+.shop-tgt-opt:hover{border-color:var(--green-d)}
+.shop-tgt-opt.on{background:var(--green);color:#fff;border-color:var(--line)}
+.shop-tgt-opt input{width:15px;height:15px;accent-color:var(--green-d);cursor:pointer;margin:0;flex:0 0 auto}
+.shop-tgt-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.shop-tgt-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--gold);color:var(--ink);padding:3px 5px 3px 8px;font-size:12px}
+.shop-tgt-chip button{border:0;background:transparent;color:var(--ink);cursor:pointer;font-size:12px;line-height:1;padding:1px 3px}
+.shop-tgt-chip button:hover{color:var(--rose)}
+.shop-tgt-add{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.shop-tgt-add .shop-tgt-new{flex:1;min-width:130px;margin-bottom:0!important}
+.shop-tgt-add .shop-tgt-addbtn{flex:0 0 auto;padding:4px 10px;font-size:12px;white-space:nowrap}
+.shop-tgt-tag{display:inline-block;border:1px solid var(--line);background:#fff;color:var(--green-d);padding:1px 6px;font-size:11px;margin-right:4px;white-space:nowrap}
+
+/* 備註 */
+.shop-note-input{width:100%;box-sizing:border-box;font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink);line-height:1.7;resize:vertical;margin-bottom:8px}
+.shop-note-input:focus{outline:2px solid var(--gold);outline-offset:-2px}
+.shop-note{font-size:12px;color:var(--muted);background:var(--green-l);border-left:3px solid var(--green);padding:5px 8px;margin-top:5px;white-space:pre-wrap;word-break:break-word;line-height:1.7}
 .shopcard{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:12px;margin-bottom:10px}
 .shopcard.other{background:#fdfefd}
 .shopcard.bought{opacity:.62;background:#f4f8f6;border-color:#b9cdc4;box-shadow:3px 3px 0 #e5efea}
@@ -365,12 +387,12 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .shop-badge.proxy{background:var(--blue);color:#fff}
 .shop-badge.self{background:var(--green-l);color:var(--muted)}
 .shopcard.editing{display:block;outline:3px solid var(--gold);outline-offset:2px}
-.shopcard.editing input,.shopcard.editing select{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink)}
-.shopcard.editing input:focus,.shopcard.editing select:focus{outline:2px solid var(--gold);outline-offset:-2px}
+.shopcard.editing input,.shopcard.editing select,.shopcard.editing textarea{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink)}
+.shopcard.editing input:focus,.shopcard.editing select:focus,.shopcard.editing textarea:focus{outline:2px solid var(--gold);outline-offset:-2px}
 .shopcard.editing #se-name,.shopcard.editing #se-place{flex:1;min-width:140px}
 .shopcard.editing .shop-type{flex:0 0 auto}
-.shopcard.editing .shop-target,.shopcard.editing .shop-target-other{flex:1;min-width:120px}
-.shopcard.editing #se-amount{flex:0 0 120px}
+.shopcard.editing #se-amount{flex:1;min-width:120px}
+.shopcard.editing .shop-tgt-opt input{width:15px;height:15px;border-width:1px;padding:0}
 
 /* ---------- 新增彈窗(拆帳/購物/筆記共用)---------- */
 .addbar{margin-bottom:14px}
@@ -380,8 +402,9 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .nmodal-card #s-cat{flex:1;min-width:120px}
 .nmodal-card #s-rate{flex:0 0 110px}
 .nmodal-card .shop-type{flex:0 0 auto}
-.nmodal-card .shop-target,.nmodal-card .shop-target-other{flex:1;min-width:120px}
-.nmodal-card #s-amount{flex:0 0 100px}
+.nmodal-card #s-amount{flex:1;min-width:100px}
+.nmodal-card .shop-targets .shop-tgt-new{width:auto}
+.nmodal-card .shop-note-input{margin-bottom:8px}
 .nmodal-card .split-parts{display:flex;flex-direction:column;gap:6px;margin:2px 0 8px}
 .nmodal-card .split-part{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .nmodal-card .split-part .sp-nm{flex:1;min-width:150px;font-size:13px}

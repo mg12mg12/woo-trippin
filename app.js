@@ -1287,7 +1287,9 @@ function openNoteLightbox(src) {
 
 // ---------- 購物清單(依帳號隔離;可切換公開;圖片縮圖+放大;已購買排到最下)----------
 let SHOP = [], SHOP_SCOPE = 'mine', SHOP_IMGS = [], SHOP_BUSY = false, SHOP_EDIT = null, SHOP_EMAILS = [];
+let SHOP_TSEL = {};              // 對象選取狀態:{ s: [...], se: [...] }
 const SHOP_MAX = 3;
+const SHOP_NOTE_MAX = 500;       // 備註字數上限(與後端一致)
 const SHOP_TYPES = ['自用', '代購', '送禮'];
 
 function shopNowStr() { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
@@ -1295,7 +1297,7 @@ function devShopAll() { try { return JSON.parse(LS.getItem('shop:' + TRIP.id)) |
 function devShopSave(all) { LS.setItem('shop:' + TRIP.id, JSON.stringify(all)); }
 async function loadShopping() {
   if (DEV) {
-    const all = devShopAll().map(x => Object.assign({ mine: true, author: myEmail(), isPublic: false, bought: false }, x));
+    const all = devShopAll().map(x => Object.assign({ mine: true, author: myEmail(), isPublic: false, bought: false, note: '', targets: [] }, x));
     SHOP = SHOP_SCOPE === 'public' ? all.filter(x => x.isPublic) : all.filter(x => x.mine);
     return;
   }
@@ -1303,7 +1305,7 @@ async function loadShopping() {
   SHOP = d.items || [];
 }
 async function renderShopping() {
-  SHOP_EDIT = null; SHOP_IMGS = [];
+  SHOP_EDIT = null; SHOP_IMGS = []; SHOP_TSEL = {};
   try { SHOP_EMAILS = await loadRoster(); await loadShopping(); }
   catch (e) { $('#content').innerHTML = '<p class="muted">讀取購物清單失敗:' + esc(e.message) + '</p>'; return; }
   drawShopping();
@@ -1324,35 +1326,90 @@ function shopBadge(type) {
   const cls = type === '送禮' ? 'gift' : (type === '代購' ? 'proxy' : 'self');
   return `<span class="shop-badge ${cls}">${esc(type || '自用')}</span>`;
 }
-// 對象下拉:團員名單 + 最後「其他」;curVal 用於編輯時回填
-function targetSelectHtml(pfx, curVal) {
-  const cur = String(curVal || '');
-  const inRoster = SHOP_EMAILS.some(em => em.toLowerCase() === cur.toLowerCase());
-  const opts = ['<option value="">對象(選填)</option>']
-    .concat(SHOP_EMAILS.map(em => `<option value="${esc(em)}"${em.toLowerCase() === cur.toLowerCase() ? ' selected' : ''}>${animalOf(em)} ${esc(shortEmail(em))}</option>`))
-    .concat([`<option value="__other__"${(cur && !inRoster) ? ' selected' : ''}>其他(自行輸入)</option>`]).join('');
-  const otherVal = (cur && !inRoster) ? cur : '';
-  return `<select id="${pfx}-target" class="shop-target">${opts}</select>
-    <input id="${pfx}-target-other" class="shop-target-other" maxlength="40" placeholder="輸入對象" value="${esc(otherVal)}"${(cur && !inRoster) ? '' : ' hidden'}/>`;
+// ---- 對象(可多人):團員名單勾選 + 自行新增 ----
+// 選取狀態放在 SHOP_TSEL[pfx],pfx = 's'(新增彈窗)或 'se'(卡片編輯)
+const shopTargetKey = (s) => String(s ?? '').trim().toLowerCase();
+const shopTargetSame = (a, b) => shopTargetKey(a) === shopTargetKey(b);
+// 字串(逗號/、/;分隔)或陣列 → 去空白、去重複的陣列
+function shopTargetList(v) {
+  const arr = Array.isArray(v) ? v : String(v ?? '').split(/[,、;;]/);
+  const out = [];
+  arr.forEach(t => {
+    t = String(t ?? '').trim();
+    if (t && !out.some(x => shopTargetSame(x, t))) out.push(t);
+  });
+  return out;
 }
+const shopTargetsOf = (it) => (it && it.targets && it.targets.length) ? shopTargetList(it.targets) : shopTargetList(it && it.target);
+
+function targetPickerHtml(pfx, curVal) {
+  SHOP_TSEL[pfx] = shopTargetList(curVal);
+  return `<div class="shop-targets" id="${pfx}-targets">${targetPickerInner(pfx)}</div>`;
+}
+function targetPickerInner(pfx) {
+  const sel = SHOP_TSEL[pfx] || [];
+  const on = (em) => sel.some(s => shopTargetSame(s, em));
+  const roster = SHOP_EMAILS.map(em =>
+    `<label class="shop-tgt-opt${on(em) ? ' on' : ''}"><input type="checkbox" data-tgtem="${esc(em)}"${on(em) ? ' checked' : ''}/><span>${animalOf(em)} ${esc(shortEmail(em))}</span></label>`).join('');
+  const customs = sel.filter(s => !SHOP_EMAILS.some(em => shopTargetSame(em, s)));
+  const chips = customs.map(s =>
+    `<span class="shop-tgt-chip">${esc(s)}<button type="button" data-tgtdel="${esc(s)}" title="移除">✕</button></span>`).join('');
+  return `
+    <div class="shop-tgt-head muted small">🎁 對象 ${sel.length ? `<b>已選 ${sel.length} 人</b>` : '(選填,可多選)'}</div>
+    <div class="shop-tgt-opts">${roster || '<span class="muted small">(還沒有團員名單)</span>'}</div>
+    ${chips ? `<div class="shop-tgt-chips">${chips}</div>` : ''}
+    <div class="shop-tgt-add">
+      <input type="text" class="shop-tgt-new" maxlength="40" placeholder="其他對象(例:媽媽、同事)"/>
+      <button type="button" class="btn-ghost shop-tgt-addbtn">＋ 加入</button>
+    </div>`;
+}
+function bindTargetPicker(pfx) {
+  const host = $('#' + pfx + '-targets'); if (!host) return;
+  const redraw = () => {
+    const pend = (host.querySelector('.shop-tgt-new') || {}).value || '';   // 保留還沒送出的輸入
+    host.innerHTML = targetPickerInner(pfx);
+    const ni = host.querySelector('.shop-tgt-new'); if (ni) ni.value = pend;
+    bindTargetPicker(pfx);
+  };
+  host.querySelectorAll('[data-tgtem]').forEach(c => c.onchange = () => {
+    const em = c.dataset.tgtem;
+    const cur = SHOP_TSEL[pfx] || (SHOP_TSEL[pfx] = []);
+    const i = cur.findIndex(s => shopTargetSame(s, em));
+    if (c.checked) { if (i === -1) cur.push(em); } else if (i !== -1) cur.splice(i, 1);
+    redraw();
+  });
+  host.querySelectorAll('[data-tgtdel]').forEach(b => b.onclick = () => {
+    SHOP_TSEL[pfx] = (SHOP_TSEL[pfx] || []).filter(s => !shopTargetSame(s, b.dataset.tgtdel));
+    redraw();
+  });
+  const input = host.querySelector('.shop-tgt-new'), addBtn = host.querySelector('.shop-tgt-addbtn');
+  const doAdd = () => {
+    const v = (input.value || '').trim();
+    if (!v) return;
+    const cur = SHOP_TSEL[pfx] || (SHOP_TSEL[pfx] = []);
+    if (!cur.some(s => shopTargetSame(s, v))) cur.push(v);
+    input.value = '';
+    redraw();
+    const ni = host.querySelector('.shop-tgt-new'); if (ni) ni.focus();
+  };
+  if (addBtn) addBtn.onclick = doAdd;
+  if (input) input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } };
+}
+function readTargets(pfx) { return shopTargetList(SHOP_TSEL[pfx] || []); }
+function readTarget(pfx) { return readTargets(pfx).join(','); }
+
 function typeSelectHtml(pfx, curVal) {
   return `<select id="${pfx}-type" class="shop-type">${SHOP_TYPES.map(t => `<option value="${t}"${t === (curVal || '自用') ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
-}
-function bindTargetToggle(pfx) {
-  const sel = $('#' + pfx + '-target'), other = $('#' + pfx + '-target-other');
-  if (!sel || !other) return;
-  sel.onchange = () => { const on = sel.value === '__other__'; other.hidden = !on; if (on) other.focus(); };
-}
-function readTarget(pfx) {
-  const sel = $('#' + pfx + '-target'); if (!sel) return '';
-  return sel.value === '__other__' ? $('#' + pfx + '-target-other').value.trim() : sel.value;
 }
 
 function shopMetaLine(it) {
   const bits = [];
   if (it.place) bits.push('📍 ' + esc(it.place));
-  if (it.type && it.type !== '自用' && it.target) bits.push('🎁 對象:' + shopShortTarget(it.target));
-  else if (it.target) bits.push('🎁 ' + shopShortTarget(it.target));
+  const tg = shopTargetsOf(it);
+  if (tg.length) {
+    const tags = tg.map(t => `<span class="shop-tgt-tag">${shopShortTarget(t)}</span>`).join('');
+    bits.push('🎁 ' + (tg.length > 1 ? `對象 ${tg.length} 人:` : '') + tags);
+  }
   if (it.amount !== '' && it.amount !== null && it.amount !== undefined && !isNaN(Number(it.amount))) bits.push('💰 NT$' + Number(it.amount).toLocaleString());
   return bits.join(' · ');
 }
@@ -1374,6 +1431,7 @@ function shopCardHtml(it) {
           ${pub}
         </div>
         ${meta ? `<div class="shop-meta muted small">${meta}</div>` : ''}
+        ${it.note ? `<div class="shop-note">${linkify(it.note)}</div>` : ''}
         ${it.link ? `<div class="shop-link">${linkify(it.link)}</div>` : ''}
       </div>
       ${it.mine ? `<div class="shopactions">
@@ -1391,9 +1449,10 @@ function shopEditHtml(it) {
       </div>
       <div class="noterow1">
         ${typeSelectHtml('se', it.type)}
-        ${targetSelectHtml('se', it.target)}
         <input id="se-amount" type="number" min="0" step="0.01" value="${esc(it.amount)}" placeholder="金額(選填)" inputmode="decimal"/>
       </div>
+      ${targetPickerHtml('se', shopTargetsOf(it))}
+      <textarea id="se-note" class="shop-note-input" maxlength="${SHOP_NOTE_MAX}" rows="3" placeholder="備註(選填,可換行:尺寸、顏色、代購交代事項…)">${esc(it.note || '')}</textarea>
       <input id="se-link" maxlength="300" value="${esc(it.link || '')}" placeholder="商品連結(選填)" style="width:100%;box-sizing:border-box;margin-bottom:8px"/>
       <div class="notekeeps" id="se-pics"></div>
       <div class="noterow2">
@@ -1456,12 +1515,15 @@ function openShopModal() {
       <input id="s-name" maxlength="60" placeholder="商品名稱"/>
       <div class="nmodal-sec">購買地點</div>
       <input id="s-place" maxlength="60" placeholder="例:Olive Young"/>
-      <div class="nmodal-sec">類型 / 對象 / 金額</div>
+      <div class="nmodal-sec">類型 / 金額</div>
       <div class="noterow1">
         ${typeSelectHtml('s', '自用')}
-        ${targetSelectHtml('s', '')}
         <input id="s-amount" type="number" min="0" step="0.01" placeholder="金額(選填)" inputmode="decimal"/>
       </div>
+      <div class="nmodal-sec">對象(可多選,也可自行新增)</div>
+      ${targetPickerHtml('s', '')}
+      <div class="nmodal-sec">備註(選填)</div>
+      <textarea id="s-note" class="shop-note-input" maxlength="${SHOP_NOTE_MAX}" rows="3" placeholder="尺寸、顏色、代購交代事項…(可換行)"></textarea>
       <div class="nmodal-sec">商品連結(選填)</div>
       <input id="s-link" maxlength="300" placeholder="貼上商品網址"/>
       <div class="noterow2">
@@ -1481,7 +1543,7 @@ function openShopModal() {
   ov.querySelector('#s-cancel').onclick = () => ov.remove();
   ov.querySelector('#s-files').onchange = onPickShopImgs;
   ov.querySelector('#s-add').onclick = onAddShop;
-  bindTargetToggle('s');
+  bindTargetPicker('s');
   drawShopPreviews();
 }
 async function onPickShopImgs(e) {
@@ -1498,19 +1560,20 @@ async function onAddShop() {
   const name = $('#s-name').value.trim();
   if (!name) { alert('請填商品名稱'); return; }
   const place = $('#s-place').value.trim(), link = $('#s-link').value.trim();
-  const type = $('#s-type').value, target = readTarget('s');
+  const type = $('#s-type').value, targets = readTargets('s'), target = targets.join(',');
+  const note = $('#s-note').value.replace(/\r\n/g, '\n').slice(0, SHOP_NOTE_MAX);
   const amtRaw = $('#s-amount').value.trim(), amount = amtRaw === '' ? '' : Number(amtRaw);
   const isPublic = $('#s-pub').checked;
   SHOP_BUSY = true; $('#s-add').disabled = true;
   shopStatus(SHOP_IMGS.length ? '上傳中…(圖片較多要等一下)' : '儲存中…');
   try {
-    const base = { name, place, link, type, target, amount, isPublic, bought: false, mine: true, author: myEmail(), updatedAt: shopNowStr() };
+    const base = { name, place, link, type, target, targets, note, amount, isPublic, bought: false, mine: true, author: myEmail(), updatedAt: shopNowStr() };
     if (DEV) {
       const item = Object.assign({ id: 's' + Date.now(), images: SHOP_IMGS.map(im => im.dataURL) }, base);
       const all = devShopAll(); all.push(item); devShopSave(all); SHOP.push(item);
     } else {
       const imgs = SHOP_IMGS.map(im => ({ name: im.name, mime: 'image/jpeg', dataB64: im.dataURL.split(',')[1] }));
-      const d = await apiPost('addShopping', { spreadsheetId: TRIP.spreadsheetId, item: { name, place, link, type, target, amount, isPublic, images: imgs } });
+      const d = await apiPost('addShopping', { spreadsheetId: TRIP.spreadsheetId, item: { name, place, link, type, target, targets, note, amount, isPublic, images: imgs } });
       SHOP.push(Object.assign({ id: d.id, images: d.images }, base));
     }
     SHOP_IMGS = [];
@@ -1536,7 +1599,7 @@ function drawShopEditPreviews() {
 }
 function bindShopEdit() {
   if (!SHOP_EDIT) return;
-  bindTargetToggle('se');
+  bindTargetPicker('se');
   drawShopEditPreviews();
   const files = $('#se-files');
   if (files) files.onchange = async (e) => {
@@ -1555,7 +1618,8 @@ async function onSaveShopEdit() {
   const name = $('#se-name').value.trim();
   if (!name) { alert('請填商品名稱'); return; }
   const place = $('#se-place').value.trim(), link = $('#se-link').value.trim();
-  const type = $('#se-type').value, target = readTarget('se');
+  const type = $('#se-type').value, targets = readTargets('se'), target = targets.join(',');
+  const note = $('#se-note').value.replace(/\r\n/g, '\n').slice(0, SHOP_NOTE_MAX);
   const amtRaw = $('#se-amount').value.trim(), amount = amtRaw === '' ? '' : Number(amtRaw);
   const isPublic = $('#se-pub').checked, bought = $('#se-bought').checked;
   SHOP_BUSY = true; $('#se-save').disabled = true;
@@ -1564,14 +1628,14 @@ async function onSaveShopEdit() {
     const i = SHOP.findIndex(x => x.id === id);
     if (DEV) {
       const all = devShopAll(); const j = all.findIndex(x => x.id === id);
-      const upd = { name, place, link, type, target, amount, isPublic, bought, images: SHOP_EDIT.keep.concat(SHOP_EDIT.add.map(im => im.dataURL)), updatedAt: shopNowStr() };
+      const upd = { name, place, link, type, target, targets, note, amount, isPublic, bought, images: SHOP_EDIT.keep.concat(SHOP_EDIT.add.map(im => im.dataURL)), updatedAt: shopNowStr() };
       if (j !== -1) { Object.assign(all[j], upd); devShopSave(all); }
       if (i !== -1) Object.assign(SHOP[i], upd);
     } else {
       const newImages = SHOP_EDIT.add.map(im => ({ name: im.name, mime: 'image/jpeg', dataB64: im.dataURL.split(',')[1] }));
       const d = await apiPost('updateShopping', { spreadsheetId: TRIP.spreadsheetId, itemId: id,
-        item: { name, place, link, type, target, amount, isPublic, bought, keepImages: SHOP_EDIT.keep, newImages } });
-      if (i !== -1) Object.assign(SHOP[i], { name, place, link, type, target, amount, isPublic, bought, images: d.images, updatedAt: shopNowStr() });
+        item: { name, place, link, type, target, targets, note, amount, isPublic, bought, keepImages: SHOP_EDIT.keep, newImages } });
+      if (i !== -1) Object.assign(SHOP[i], { name, place, link, type, target, targets, note, amount, isPublic, bought, images: d.images, updatedAt: shopNowStr() });
     }
     SHOP_EDIT = null;
     if (SHOP_SCOPE === 'public' && !isPublic && i !== -1) SHOP.splice(i, 1);   // 大家的檢視改成私人 → 消失
