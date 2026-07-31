@@ -47,7 +47,8 @@ let USER = null;  // 登入後的帳號 { email, name };本機 DEV 用示範帳�
 const AVATAR_DIR = 'avatars/';
 const AVATARS = ['1-removebg-preview.png', '2-removebg-preview.png', '3-removebg-preview.png'];
 let SEASON = 'summer';
-let ID_TOKEN = null;  // 上線時 Google 登入取得的憑證(本機 DEV 不需要)
+let ID_TOKEN = null;  // Google 登入取得的憑證,只用在「第一次登入」換 session(本機 DEV 不需要)
+let SESSION = null;   // 後端簽發的登入憑證,可維持約一週;之後每次請求都帶這個
 // 各季圖釘:檔名 + 顯示尺寸 + 綠底圓心(% 相對圖釘),數字壓在圓心
 const PINS = {
   spring: { file: 'pin-spring', w: 66, h: 76, cx: 49.9, cy: 37.3 },
@@ -222,11 +223,9 @@ async function loadTrip(meta) {
   if (DEV) return devClone(meta.id) || meta;
   const key = 'tcache2:' + meta.spreadsheetId;
   const fetchFresh = (async () => {
-    const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'dump', spreadsheetId: meta.spreadsheetId, idToken: ID_TOKEN }) });
-    const d = await res.json(); if (!d.ok) throw new Error(d.error || '讀取失敗');
-    try { localStorage.setItem(key, JSON.stringify(d.data.sheets)); } catch (e) {}
-    return d.data.sheets;
+    const data = await apiRaw('dump', { spreadsheetId: meta.spreadsheetId });
+    try { localStorage.setItem(key, JSON.stringify(data.sheets)); } catch (e) {}
+    return data.sheets;
   })();
   let cached = null; try { const s = localStorage.getItem(key); if (s) cached = JSON.parse(s); } catch (e) {}
   if (cached) { fetchFresh.catch(() => {}); return Object.assign({}, meta, { sheets: cached }); }
@@ -234,9 +233,7 @@ async function loadTrip(meta) {
 }
 async function saveSheetRemote(name, sheet) {
   if (DEV) { TRIP.sheets[name] = sheet; devPersist(); return; }
-  const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'saveSheet', spreadsheetId: TRIP.spreadsheetId, idToken: ID_TOKEN, sheetName: name, headers: sheet.headers, rows: sheet.rows }) });
-  const d = await res.json(); if (!d.ok) throw new Error(d.error || '儲存失敗');
+  await apiRaw('saveSheet', { spreadsheetId: TRIP.spreadsheetId, sheetName: name, headers: sheet.headers, rows: sheet.rows });
   TRIP.sheets[name] = sheet;
   try { localStorage.setItem('tcache2:' + TRIP.spreadsheetId, JSON.stringify(TRIP.sheets)); } catch (e) {}
 }
@@ -2071,11 +2068,48 @@ async function saveCurrent() {
 }
 
 // ---------- 登入(僅上線時需要;本機 DEV 自動略過)----------
-async function apiPost(action, params) {
-  const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(Object.assign({ action, idToken: ID_TOKEN }, params)) });
-  const d = await res.json(); if (!d.ok) throw new Error(d.error || '錯誤'); return d.data;
+// 登入狀態用後端簽發的 session 憑證(可維持約一週),不再直接用 Google 的 ID token
+// ——Google ID token 固定 1 小時過期且不可調整,那是之前「過一陣子就自動登出」的原因。
+const SESS_KEY = 'sess';
+function saveSession(token, exp) {
+  SESSION = token || null;
+  try {
+    if (SESSION) { LS.setItem(SESS_KEY, SESSION); if (exp) LS.setItem(SESS_KEY + 'Exp', String(exp)); }
+    else { LS.removeItem(SESS_KEY); LS.removeItem(SESS_KEY + 'Exp'); }
+  } catch (e) {}
 }
+function loadSession() { try { return LS.getItem(SESS_KEY); } catch (e) { return null; } }
+function clearAuth() {
+  SESSION = null; ID_TOKEN = null;
+  saveSession(null);
+  try { LS.removeItem('idt'); } catch (e) {}
+}
+// 憑證失效時:清掉狀態、跳回登入畫面(而不是在分頁裡丟一句看不懂的紅字)
+function onAuthExpired(msg) {
+  clearAuth();
+  USER = null;
+  hideLoading();
+  const gate = $('#login-gate');
+  if (gate && gate.hidden === false) return;      // 已經在登入畫面就不重複處理
+  startLogin();
+  showLoginErr(msg || '登入已過期,請重新登入');
+}
+async function apiRaw(action, params) {
+  const body = Object.assign({ action }, params);
+  if (SESSION) body.session = SESSION;            // 平常用 session
+  if (ID_TOKEN) body.idToken = ID_TOKEN;          // 首次登入才需要 Google 憑證
+  const res = await fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body) });
+  const d = await res.json();
+  if (d && d.session) saveSession(d.session, d.sessionExp);   // 後端續期後換上新憑證
+  if (!d.ok) {
+    const err = new Error(d.error || '錯誤');
+    if (d.authFail) { err.authFail = true; onAuthExpired(d.error); }
+    throw err;
+  }
+  return d.data;
+}
+async function apiPost(action, params) { return apiRaw(action, params); }
 function startLogin() {
   const gate = $('#login-gate'); if (gate) gate.hidden = false;
   if (!CFG.GOOGLE_CLIENT_ID) { showLoginErr('尚未設定 GOOGLE_CLIENT_ID(請編輯 config.js)'); return; }
@@ -2090,14 +2124,15 @@ function showLoginErr(msg) { const e = $('#login-err'); if (e) { e.hidden = fals
 async function onCredential(resp) {
   ID_TOKEN = resp.credential;
   try {
-    USER = await apiPost('me', {});        // 後端驗證 token + email 白名單
-    try { localStorage.setItem('idt', ID_TOKEN); } catch (e) {}
+    USER = await apiPost('me', {});        // 後端驗證 Google 憑證 + 白名單,並回傳一週有效的 session
+    ID_TOKEN = null;                       // 已換到 session,Google 的短命憑證就不留了
     $('#login-gate').hidden = true;
+    const err = $('#login-err'); if (err) err.hidden = true;
     showLoading();
     try { await restoreFromHash(); } finally { hideLoading(); }
   } catch (e) {
     ID_TOKEN = null;
-    showLoginErr('登入失敗:' + e.message);
+    if (!e.authFail) showLoginErr('登入失敗:' + e.message);
   }
 }
 
@@ -2105,16 +2140,21 @@ async function onCredential(resp) {
 async function boot() {
   showLoading();
   if (DEV) { USER = { email: 'demo@local', name: '本機示範' }; try { await restoreFromHash(); } finally { hideLoading(); } return; }
-  const saved = (function(){ try { return localStorage.getItem('idt'); } catch (e) { return null; } })();
+  const saved = loadSession();
   if (saved) {
-    ID_TOKEN = saved;
+    SESSION = saved;
     try {
-      USER = await apiPost('me', {}); const g = $('#login-gate'); if (g) g.hidden = true;
+      USER = await apiPost('me', {});      // 憑證還有效就直接進去,不必再經過 Google
+      const g = $('#login-gate'); if (g) g.hidden = true;
       try { await restoreFromHash(); } finally { hideLoading(); }
       return;
     }
-    catch (e) { ID_TOKEN = null; try { localStorage.removeItem('idt'); } catch (e2) {} }
+    catch (e) {
+      clearAuth();
+      if (e.authFail) return;              // onAuthExpired 已經把登入畫面帶出來了
+    }
   }
+  try { LS.removeItem('idt'); } catch (e) {}   // 清掉舊版存的 Google 憑證
   hideLoading();   // 進登入畫面時收掉遮罩
   startLogin();
 }
