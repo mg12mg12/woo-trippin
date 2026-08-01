@@ -330,13 +330,75 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .split-part .sp-nm{flex:1;min-width:150px;font-size:13px}
 .split-part .sp-amt{width:130px}
 .settle-box{background:var(--green-l);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);padding:10px 12px;margin-bottom:6px}
-.settle-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0}
+.settle-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;flex-wrap:wrap}
+/* flex 項目預設 min-width:auto,長 email 會撐爆整列 → 一律允許縮到 0 並可斷行 */
+.settle-row .settle-from,.settle-row .settle-to{min-width:0;overflow-wrap:anywhere}
 .settle-row .settle-from{font-weight:400}
-.settle-row .settle-arrow{color:var(--green-d);font-family:var(--px);font-size:11px}
-.settle-row .settle-to{flex:1}
-.settle-row .settle-amt{font-family:var(--px);font-size:13px;color:var(--green-d);font-variant-numeric:tabular-nums}
-.sp-line{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0}
-.sp-line .sp-settle{padding:2px 8px;font-size:11px}
+.settle-row .settle-arrow{color:var(--green-d);font-family:var(--px);font-size:11px;flex:0 0 auto}
+.settle-row .settle-to{flex:1 1 auto}
+.settle-row .settle-amt{font-family:var(--px);font-size:13px;color:var(--green-d);font-variant-numeric:tabular-nums;flex:0 0 auto;margin-left:auto}
+.sp-line{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0;flex-wrap:wrap}
+.sp-line > span{min-width:0;overflow-wrap:anywhere}
+.sp-line .sp-settle{padding:2px 8px;font-size:11px;flex:0 0 auto}
+/* 收據:縮圖在「分攤明細」欄最底部(手機卡片版就等於整張卡的最下面) */
+.sp-pics{margin-top:8px}
+.sp-pics .notepic{width:64px;height:48px}
+.sp-picbar{margin-top:8px}
+.sp-picbar .sp-pic-edit{padding:4px 10px;font-size:11px}
+
+/* --- 拆帳:手機改卡片式(桌機維持表格) --- */
+@media(max-width:640px){
+  .settle-row .settle-amt{flex:1 0 100%;text-align:right;margin-left:0}
+  /* 外框交給每張卡片自己畫 */
+  .splitwrap{background:none;border:0;box-shadow:none;overflow:visible;margin-bottom:76px}
+  .splitwrap table.tbl{min-width:0;width:100%;display:block;font-size:13px}
+  .splitwrap thead{display:none}
+  .splitwrap tbody{display:block}
+  .splitwrap tr{
+    display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;align-items:start;
+    background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);
+    padding:10px 12px;margin-bottom:12px}
+  .splitwrap td{display:block;border:0;padding:0;min-width:0}
+  .splitwrap .sp-item{grid-column:1;grid-row:1;font-size:14px;overflow-wrap:anywhere}
+  .splitwrap .rowdel{grid-column:2;grid-row:1;text-align:right}
+  .splitwrap .rowdel button{border:0;background:none;color:var(--hint);cursor:pointer;font-size:16px;padding:2px 4px;line-height:1}
+  .splitwrap .rowdel button:hover{color:var(--rose)}
+  .splitwrap .sp-payer-cell{grid-column:1;grid-row:2;align-self:center;color:var(--muted);font-size:12px;padding-top:4px}
+  .splitwrap .sp-total{grid-column:2;grid-row:2;align-self:center;padding-top:4px;
+    font-family:var(--px);font-size:13px;color:var(--green-d);text-align:right;white-space:nowrap}
+  .splitwrap .sp-detail{grid-column:1 / -1;grid-row:3;margin-top:8px;padding-top:8px;border-top:2px dashed var(--shadow)}
+  .splitwrap .sp-detail::before{content:attr(data-label);display:block;font-size:11px;color:var(--hint);margin-bottom:4px}
+  .splitwrap .sp-line{justify-content:flex-start;row-gap:4px}
+  .splitwrap .sp-line .sp-settle,.splitwrap .sp-line .ecat{margin-left:auto}
+  /* 手機的收據縮圖放大一點,比較好按 */
+  .splitwrap .sp-pics .notepic{width:96px;height:72px}
+  .splitwrap .sp-picbar .sp-pic-edit{padding:6px 12px;font-size:12px}
+}
+
+/* --- 支出:手機改卡片式(桌機維持表格) --- */
+@media(max-width:640px){
+  .expwrap{background:none;border:0;box-shadow:none;overflow:visible;margin-bottom:76px}
+  .expwrap table.tbl{min-width:0;width:100%;display:block;font-size:13px}
+  .expwrap thead{display:none}
+  .expwrap tbody{display:block}
+  .expwrap tr{
+    display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;
+    background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);
+    padding:10px 12px;margin-bottom:10px}
+  .expwrap td{display:block;border:0;padding:0;min-width:0;text-align:left}
+  /* 商品名幾乎佔滿第一行,刪除鈕跟著它,其餘欄位自然換到第二行 */
+  .expwrap .ex-name{order:1;flex:1 1 calc(100% - 44px);font-size:14px;overflow-wrap:anywhere}
+  .expwrap .rowdel{order:2;flex:0 0 auto;margin-left:auto}
+  .expwrap .rowdel button{border:0;background:none;color:var(--hint);cursor:pointer;font-size:16px;padding:2px 4px;line-height:1}
+  .expwrap .rowdel button:hover{color:var(--rose)}
+  .expwrap .ex-cat{order:3;flex:0 0 auto}
+  .expwrap .ex-qty,.expwrap .ex-price,.expwrap .ex-total{order:4;flex:0 0 auto;font-size:12px;color:var(--muted);white-space:nowrap}
+  .expwrap .ex-qty::before{content:'×'}
+  .expwrap .ex-price::before{content:'單價 '}
+  .expwrap .ex-total::before{content:'原幣 '}
+  .expwrap .ex-twd{order:5;flex:0 0 auto;margin-left:auto;
+    font-family:var(--px);font-size:13px;color:var(--green-d);white-space:nowrap}
+}
 
 /* ---------- 購物清單 ---------- */
 .shopform select{font-family:var(--cjk);border:2px solid var(--line);background:#fff;padding:7px 9px;font-size:13px;color:var(--ink)}

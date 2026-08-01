@@ -655,12 +655,12 @@ function drawExpenses(rate0) {
   const opts = EXP_CATS.map(c => `<option value="${c}">${c}</option>`).join('');
   const rows = sorted.map(({ e, i }) => `
     <tr>
-      <td>${esc(e.name)}${e.splitId ? ' <span class="ecat" title="來自拆帳,請到拆帳分頁管理">💸拆帳</span>' : ''}</td>
-      <td><span class="ecat">${esc(e.category || '其他')}</span></td>
-      <td class="num">${e.qty || 1}</td>
-      <td class="num">${(Number(e.amount) || 0).toLocaleString()}</td>
-      <td class="num">${totOf(e).toLocaleString()}</td>
-      <td class="num">NT$${twdOf(e).toLocaleString()}</td>
+      <td class="ex-name">${esc(e.name)}${e.splitId ? ' <span class="ecat" title="來自拆帳,請到拆帳分頁管理">💸拆帳</span>' : ''}</td>
+      <td class="ex-cat"><span class="ecat">${esc(e.category || '其他')}</span></td>
+      <td class="num ex-qty">${e.qty || 1}</td>
+      <td class="num ex-price">${(Number(e.amount) || 0).toLocaleString()}</td>
+      <td class="num ex-total">${totOf(e).toLocaleString()}</td>
+      <td class="num ex-twd">NT$${twdOf(e).toLocaleString()}</td>
       <td class="rowdel">${e.splitId ? '' : `<button data-del="${i}" title="刪除">✕</button>`}</td>
     </tr>`).join('');
   $('#content').innerHTML = `
@@ -676,7 +676,7 @@ function drawExpenses(rate0) {
     <div class="exptotal">台幣總計 <b>NT$${totalTwd.toLocaleString()}</b></div>
     <div class="expchart-wrap">${EXP.length ? '<canvas id="expchart"></canvas>' : '<p class="muted" style="padding:16px">還沒有支出,先在上面新增一筆。</p>'}</div>
     ${EXP.length ? `<div class="expcats">${catRows}</div>` : ''}
-    <div class="tablewrap"${EXP.length ? '' : ' hidden'}>
+    <div class="tablewrap expwrap"${EXP.length ? '' : ' hidden'}>
       <table class="tbl"><thead><tr><th>商品</th><th>分類</th><th>數量</th><th>單價</th><th>總額</th><th>台幣</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>`;
@@ -716,6 +716,10 @@ function drawExpChart() {
 
 // ---------- 拆帳頁(付款人與被分帳人都看得到;記一筆會自動寫進各人的支出)----------
 let SPLITS = [], SPLIT_EMAILS = [], SPLIT_ME = '';
+let SPLIT_IMGS = [];        // 新增彈窗裡待上傳的收據(壓縮後)
+let SPLIT_EDIT = null;      // 事後補收據:{ id, keep:[檔案ID], add:[壓縮後的圖] }
+let SPLIT_BUSY = false;
+const SPLIT_MAX = 3;        // 每筆拆帳的收據張數上限(與後端 SPLIT_IMG_MAX 一致)
 const myEmail = () => String((USER && USER.email) || 'demo@local').toLowerCase();
 
 async function loadSplits() {
@@ -782,7 +786,7 @@ function drawSplits() {
 
   // 結算摘要
   const { net, transfers } = computeSettlement(SPLITS);
-  const nameOf = (em) => `${animalOf(em)} ${esc(em)}`;
+  const nameOf = (em) => `<span title="${esc(em)}">${animalOf(em)} ${esc(shortEmail(em))}</span>`;
   let summaryHtml;
   if (!transfers.length) {
     summaryHtml = '<p class="muted small" style="padding:4px 0">目前沒有待結清的款項。</p>';
@@ -807,11 +811,18 @@ function drawSplits() {
         : `<span class="ecat">${done ? '已還✔' : '未還'}</span>`;
       return `<div class="sp-line"><span>${line}</span>${badge}</div>`;
     }).join('');
+    // 收據:縮圖放在「分攤明細」欄最底部 → 手機卡片版自然就落在每筆項目的最下面
+    const imgs = sp.images || [];
+    const thumbs = imgs.length ? `<div class="notepics sp-pics">${imgs.map(im =>
+      `<button class="notepic" data-full="${esc(noteFull(im))}"><img src="${esc(noteThumb(im))}" loading="lazy" alt="收據照片"/></button>`).join('')}</div>` : '';
+    const picBtn = iAmPayer
+      ? `<div class="sp-picbar"><button class="btn-ghost sp-pic-edit" data-sid="${esc(sp.id)}">📷 ${imgs.length ? `收據(${imgs.length}/${SPLIT_MAX})` : '加收據'}</button></div>`
+      : '';
     return `<tr>
-      <td>${esc(sp.item || '(未命名)')}<div class="muted small">${esc(sp.category || '')}${sp.note ? ' · ' + esc(sp.note) : ''}</div></td>
-      <td>${animalOf(payer)} ${esc(shortEmail(payer))}${iAmPayer ? '(我)' : ''}</td>
-      <td class="num">NT$${(Number(sp.totalTwd) || Math.round((Number(sp.totalOrig) || 0) * (Number(sp.rate) || 0))).toLocaleString()}</td>
-      <td>${detail}</td>
+      <td class="sp-item">${esc(sp.item || '(未命名)')}<div class="muted small">${esc(sp.category || '')}${sp.note ? ' · ' + esc(sp.note) : ''}</div></td>
+      <td class="sp-payer-cell" data-label="付款人">${animalOf(payer)} ${esc(shortEmail(payer))}${iAmPayer ? '(我)' : ''}</td>
+      <td class="num sp-total" data-label="台幣總額">NT$${(Number(sp.totalTwd) || Math.round((Number(sp.totalOrig) || 0) * (Number(sp.rate) || 0))).toLocaleString()}</td>
+      <td class="sp-detail" data-label="分攤明細">${detail}${thumbs}${picBtn}</td>
       <td class="rowdel">${iAmPayer ? `<button data-delsplit="${esc(sp.id)}" title="刪除">✕</button>` : ''}</td>
     </tr>`;
   }).join('');
@@ -821,7 +832,7 @@ function drawSplits() {
     <div class="addbar"><button id="k-open" class="btn">＋ 記一筆拆帳</button></div>
     <div class="section-title" style="margin-top:8px">💰 結算(最少還款次數)</div>
     <div class="settle-box">${summaryHtml}</div>
-    <div class="tablewrap"${SPLITS.length ? '' : ' hidden'} style="margin-top:12px">
+    <div class="tablewrap splitwrap"${SPLITS.length ? '' : ' hidden'} style="margin-top:12px">
       <table class="tbl"><thead><tr><th>項目</th><th>付款人</th><th>台幣總額</th><th>分攤明細</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>
@@ -830,6 +841,8 @@ function drawSplits() {
   $('#k-open').onclick = openSplitModal;
   $('#content').querySelectorAll('.sp-settle').forEach(b => b.onclick = () => onToggleSettle(b.dataset.sid, b.dataset.em, b.dataset.done !== '1'));
   $('#content').querySelectorAll('[data-delsplit]').forEach(b => b.onclick = () => onDelSplit(b.dataset.delsplit));
+  $('#content').querySelectorAll('.sp-pics .notepic').forEach(b => b.onclick = () => openNoteLightbox(b.dataset.full));
+  $('#content').querySelectorAll('.sp-pic-edit').forEach(b => b.onclick = () => openSplitPicModal(b.dataset.sid));
 }
 function shortEmail(em) { const s = String(em || ''); const i = s.indexOf('@'); return i === -1 ? s : s.slice(0, i); }
 function openSplitModal() {
@@ -873,6 +886,12 @@ function openSplitModal() {
       <div class="exptotal">原幣總額 <b id="s-total">0</b> · 台幣約 <b id="s-total-twd">NT$0</b></div>
       <div class="nmodal-sec">備註(選填)</div>
       <input id="s-note" placeholder="備註"/>
+      <div class="nmodal-sec">收據照片(選填,最多${SPLIT_MAX}張)</div>
+      <div class="noterow2">
+        <label class="notepick" for="sp-files">📷 ＋ 加收據</label>
+        <input id="sp-files" type="file" accept="image/*" multiple hidden/>
+        <div id="sp-previews" class="notepreviews"></div>
+      </div>
       <div class="nmodal-btns">
         <button id="s-cancel" class="btn-ghost">取消</button>
         <button id="s-add" class="btn">＋ 記一筆拆帳</button>
@@ -882,6 +901,9 @@ function openSplitModal() {
   document.body.appendChild(ov);
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
   ov.querySelector('#s-cancel').onclick = () => ov.remove();
+  SPLIT_IMGS = [];
+  ov.querySelector('#sp-files').onchange = onPickSplitImgs;
+  drawSplitPreviews();
 
   let mode = 'free';
   const round2 = (v) => Math.round(v * 100) / 100;
@@ -944,6 +966,106 @@ function openSplitModal() {
   recalcTotals();
 }
 
+function splitStatus(msg) { const p = $('#s-status'); if (!p) return; p.textContent = msg || ''; p.hidden = !msg; }
+
+async function onPickSplitImgs(e) {
+  const files = Array.from(e.target.files || []); e.target.value = '';
+  if (!files.length) return;
+  if (SPLIT_IMGS.length + files.length > SPLIT_MAX) { alert('每筆拆帳最多 ' + SPLIT_MAX + ' 張收據'); return; }
+  splitStatus('圖片壓縮中…');
+  try { for (const f of files) SPLIT_IMGS.push(await compressImage(f)); splitStatus(''); }
+  catch (err) { splitStatus(''); alert(err.message); }
+  drawSplitPreviews();
+}
+function drawSplitPreviews() {
+  const host = $('#sp-previews'); if (!host) return;
+  host.innerHTML = SPLIT_IMGS.map((im, i) =>
+    `<span class="notepv new"><img src="${esc(im.dataURL)}" alt="${esc(im.name)}"/><button data-adel="${i}" title="移除">✕</button></span>`).join('');
+  host.querySelectorAll('[data-adel]').forEach(b => b.onclick = () => { SPLIT_IMGS.splice(+b.dataset.adel, 1); drawSplitPreviews(); });
+}
+
+// 事後補/刪收據(只有付款人看得到入口;後端會再驗一次)
+function openSplitPicModal(sid) {
+  const sp = SPLITS.find(s => s.id === sid);
+  if (!sp || String(sp.payer).toLowerCase() !== SPLIT_ME || SPLIT_BUSY) return;
+  SPLIT_EDIT = { id: sid, keep: (sp.images || []).slice(), add: [] };
+  const ov = document.createElement('div');
+  ov.className = 'nmodal addmodal';
+  ov.innerHTML = `
+    <div class="nmodal-card">
+      <div class="nmodal-title">📷 收據 — ${esc(sp.item || '(未命名)')}</div>
+      <div class="nmodal-sec">目前的收據(點 ✕ 移除,存檔後才會真的刪掉)</div>
+      <div id="spe-pics" class="notekeeps"></div>
+      <div class="noterow2">
+        <label class="notepick" for="spe-files">📷 ＋ 加收據</label>
+        <input id="spe-files" type="file" accept="image/*" multiple hidden/>
+      </div>
+      <p class="muted small">每筆最多 ${SPLIT_MAX} 張。</p>
+      <div class="nmodal-btns">
+        <button id="spe-cancel" class="btn-ghost">取消</button>
+        <button id="spe-save" class="btn">儲存</button>
+      </div>
+      <p id="spe-status" class="muted small" hidden></p>
+    </div>`;
+  document.body.appendChild(ov);
+  const close = () => { SPLIT_EDIT = null; ov.remove(); };
+  ov.onclick = (e) => { if (e.target === ov && !SPLIT_BUSY) close(); };   // 儲存中不讓關,免得中途斷掉
+  ov.querySelector('#spe-cancel').onclick = () => { if (!SPLIT_BUSY) close(); };
+  ov.querySelector('#spe-files').onchange = onPickSplitEditImgs;
+  ov.querySelector('#spe-save').onclick = () => onSaveSplitPics(close);
+  drawSplitEditPreviews();
+}
+function spEditStatus(msg) { const p = $('#spe-status'); if (!p) return; p.textContent = msg || ''; p.hidden = !msg; }
+function splitEditCount() { return SPLIT_EDIT ? SPLIT_EDIT.keep.length + SPLIT_EDIT.add.length : 0; }
+async function onPickSplitEditImgs(e) {
+  const files = Array.from(e.target.files || []); e.target.value = '';
+  if (!files.length || !SPLIT_EDIT) return;
+  if (splitEditCount() + files.length > SPLIT_MAX) { alert('每筆拆帳最多 ' + SPLIT_MAX + ' 張收據'); return; }
+  spEditStatus('圖片壓縮中…');
+  try {
+    for (const f of files) {
+      const im = await compressImage(f);
+      if (!SPLIT_EDIT) return;   // 壓縮途中視窗被關掉就安靜收工
+      SPLIT_EDIT.add.push(im);
+    }
+    spEditStatus('');
+  } catch (err) { spEditStatus(''); alert(err.message); }
+  drawSplitEditPreviews();
+}
+function drawSplitEditPreviews() {
+  const host = $('#spe-pics'); if (!host || !SPLIT_EDIT) return;
+  const html = SPLIT_EDIT.keep.map((im, i) =>
+    `<span class="notepv"><img src="${esc(noteThumb(im))}" alt="收據"/><button data-kdel="${i}" title="移除">✕</button></span>`).join('')
+    + SPLIT_EDIT.add.map((im, i) =>
+    `<span class="notepv new"><img src="${esc(im.dataURL)}" alt="${esc(im.name)}"/><button data-adel="${i}" title="移除">✕</button></span>`).join('');
+  host.innerHTML = html || '<span class="muted small">還沒有收據。</span>';
+  host.querySelectorAll('[data-kdel]').forEach(b => b.onclick = () => { SPLIT_EDIT.keep.splice(+b.dataset.kdel, 1); drawSplitEditPreviews(); });
+  host.querySelectorAll('[data-adel]').forEach(b => b.onclick = () => { SPLIT_EDIT.add.splice(+b.dataset.adel, 1); drawSplitEditPreviews(); });
+}
+async function onSaveSplitPics(close) {
+  if (!SPLIT_EDIT || SPLIT_BUSY) return;
+  const { id, keep, add } = SPLIT_EDIT;
+  SPLIT_BUSY = true;
+  const btn = $('#spe-save'); if (btn) btn.disabled = true;
+  spEditStatus(add.length ? '上傳中…(圖片較多要等一下)' : '儲存中…');
+  try {
+    if (DEV) {
+      // 先寫 localStorage、成功了才改記憶體;不然配額爆掉會留下「畫面有圖但其實沒存」的假象
+      const imgs = keep.concat(add.map(im => im.dataURL));
+      const next = SPLITS.map(s => s.id === id ? Object.assign({}, s, { images: imgs }) : s);
+      localStorage.setItem('split:' + TRIP.id, JSON.stringify(next));
+      SPLITS = next;
+    } else {
+      const imgs = add.map(im => ({ name: im.name, mime: 'image/jpeg', dataB64: im.dataURL.split(',')[1] }));
+      await apiPost('splitImages', { spreadsheetId: TRIP.spreadsheetId, splitId: id, keep, add: imgs });
+      SPLITS = await loadSplits();
+    }
+  } catch (e) { alert('儲存失敗:' + e.message); SPLIT_BUSY = false; if (btn) btn.disabled = false; spEditStatus(''); return; }
+  SPLIT_BUSY = false;
+  close();
+  drawSplits();
+}
+
 async function onAddSplit() {
   const item = $('#s-item').value.trim();
   const category = $('#s-cat').value;
@@ -958,20 +1080,29 @@ async function onAddSplit() {
   });
   if (!item) { alert('請填項目名稱'); return; }
   if (!shares.length) { alert('請至少填一個人的分攤金額'); return; }
+  if (SPLIT_BUSY) return;
+  SPLIT_BUSY = true;
   const btn = $('#s-add'); btn.disabled = true;
+  splitStatus(SPLIT_IMGS.length ? '上傳中…(圖片較多要等一下)' : '儲存中…');
   try {
     if (DEV) {
       const id = 'S' + Date.now();
       const totalOrig = shares.reduce((a, s) => a + s.amount, 0);
-      SPLITS.push({ id, createdAt: new Date().toISOString(), payer, item, category, rate, totalOrig, totalTwd: Math.round(totalOrig * rate), shares, settled: {}, note });
-      localStorage.setItem('split:' + TRIP.id, JSON.stringify(SPLITS));
+      // 先寫 localStorage、成功了才改記憶體(配額爆掉時不會留下幽靈紀錄)
+      const rec = { id, createdAt: new Date().toISOString(), payer, item, category, rate, totalOrig, totalTwd: Math.round(totalOrig * rate), shares, settled: {}, note, images: SPLIT_IMGS.map(im => im.dataURL) };
+      const next = SPLITS.concat([rec]);
+      localStorage.setItem('split:' + TRIP.id, JSON.stringify(next));
+      SPLITS = next;
       const mine = shares.find(s => s.email === SPLIT_ME);
       if (mine) devAddExpense({ name: item, category, amount: mine.amount, rate }, id);
     } else {
-      await apiPost('addSplit', { spreadsheetId: TRIP.spreadsheetId, split: { item, category, rate, note, shares, payer } });
+      const images = SPLIT_IMGS.map(im => ({ name: im.name, mime: 'image/jpeg', dataB64: im.dataURL.split(',')[1] }));
+      await apiPost('addSplit', { spreadsheetId: TRIP.spreadsheetId, split: { item, category, rate, note, shares, payer, images } });
       SPLITS = await loadSplits();
     }
-  } catch (e) { btn.disabled = false; alert('儲存失敗:' + e.message); return; }
+  } catch (e) { SPLIT_BUSY = false; btn.disabled = false; splitStatus(''); alert('儲存失敗:' + e.message); return; }
+  SPLIT_BUSY = false;
+  SPLIT_IMGS = [];
   closeAddModal();
   drawSplits();
 }
