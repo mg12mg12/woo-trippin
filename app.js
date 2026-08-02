@@ -655,13 +655,14 @@ function drawExpenses(rate0) {
   const opts = EXP_CATS.map(c => `<option value="${c}">${c}</option>`).join('');
   const rows = sorted.map(({ e, i }) => `
     <tr>
-      <td class="ex-name">${esc(e.name)}${e.splitId ? ' <span class="ecat" title="來自拆帳,請到拆帳分頁管理">💸拆帳</span>' : ''}</td>
+      <td class="ex-name">${esc(e.name)}${e.splitId ? ' <span class="ecat ecat-src" title="來自拆帳,請到拆帳分頁管理">💸拆帳</span>' : ''}</td>
       <td class="ex-cat"><span class="ecat">${esc(e.category || '其他')}</span></td>
+      <td class="ex-calc">${(Number(e.amount) || 0).toLocaleString()} × ${e.qty || 1} = ${totOf(e).toLocaleString()}</td>
       <td class="num ex-qty">${e.qty || 1}</td>
       <td class="num ex-price">${(Number(e.amount) || 0).toLocaleString()}</td>
       <td class="num ex-total">${totOf(e).toLocaleString()}</td>
       <td class="num ex-twd">NT$${twdOf(e).toLocaleString()}</td>
-      <td class="rowdel">${e.splitId ? '' : `<button data-del="${i}" title="刪除">✕</button>`}</td>
+      <td class="rowdel">${e.splitId ? '' : `<button class="delbtn" data-del="${i}" title="刪除" aria-label="刪除">✕</button>`}</td>
     </tr>`).join('');
   $('#content').innerHTML = `
     <div class="section-title">💵 支出 <span class="muted small">(只有你自己看得到)</span></div>
@@ -802,14 +803,14 @@ function drawSplits() {
     const detail = (sp.shares || []).map(s => {
       const em = String(s.email).toLowerCase();
       const twd = Math.round((Number(s.amount) || 0) * (Number(sp.rate) || 0));
-      const line = `${animalOf(em)} ${esc(shortEmail(em))} ${(Number(s.amount) || 0).toLocaleString()}(NT$${twd.toLocaleString()})`;
-      if (em === payer) return `<div class="sp-line"><span>${line}</span><span class="ecat">自己</span></div>`;
+      const line = `<span class="sp-who">${animalOf(em)} ${esc(shortEmail(em))}</span><span class="sp-share">${(Number(s.amount) || 0).toLocaleString()}(NT$${twd.toLocaleString()})</span>`;
+      if (em === payer) return `<div class="sp-line">${line}<span class="ecat ecat-state">自己</span></div>`;
       const done = !!(sp.settled && sp.settled[em]);
       const canToggle = iAmPayer || em === me;
       const badge = canToggle
         ? `<button class="btn-ghost sp-settle" data-sid="${esc(sp.id)}" data-em="${esc(em)}" data-done="${done ? 1 : 0}">${done ? '已還✔' : '標記已還'}</button>`
-        : `<span class="ecat">${done ? '已還✔' : '未還'}</span>`;
-      return `<div class="sp-line"><span>${line}</span>${badge}</div>`;
+        : `<span class="ecat ecat-state${done ? ' is-done' : ''}">${done ? '已還✔' : '未還'}</span>`;
+      return `<div class="sp-line">${line}${badge}</div>`;
     }).join('');
     // 收據:縮圖放在「分攤明細」欄最底部 → 手機卡片版自然就落在每筆項目的最下面
     const imgs = sp.images || [];
@@ -819,11 +820,11 @@ function drawSplits() {
       ? `<div class="sp-picbar"><button class="btn-ghost sp-pic-edit" data-sid="${esc(sp.id)}">📷 ${imgs.length ? `收據(${imgs.length}/${SPLIT_MAX})` : '加收據'}</button></div>`
       : '';
     return `<tr>
-      <td class="sp-item">${esc(sp.item || '(未命名)')}<div class="muted small">${esc(sp.category || '')}${sp.note ? ' · ' + esc(sp.note) : ''}</div></td>
-      <td class="sp-payer-cell" data-label="付款人">${animalOf(payer)} ${esc(shortEmail(payer))}${iAmPayer ? '(我)' : ''}</td>
-      <td class="num sp-total" data-label="台幣總額">NT$${(Number(sp.totalTwd) || Math.round((Number(sp.totalOrig) || 0) * (Number(sp.rate) || 0))).toLocaleString()}</td>
+      <td class="sp-item">${esc(sp.item || '(未命名)')}<div class="sp-sub muted small">${esc(sp.category || '')}${sp.note ? ' · ' + esc(sp.note) : ''}</div></td>
+      <td class="sp-payer-cell">${animalOf(payer)} ${esc(shortEmail(payer))}${iAmPayer ? '(我)' : ''}</td>
+      <td class="num sp-total">NT$${(Number(sp.totalTwd) || Math.round((Number(sp.totalOrig) || 0) * (Number(sp.rate) || 0))).toLocaleString()}</td>
       <td class="sp-detail" data-label="分攤明細">${detail}${thumbs}${picBtn}</td>
-      <td class="rowdel">${iAmPayer ? `<button data-delsplit="${esc(sp.id)}" title="刪除">✕</button>` : ''}</td>
+      <td class="rowdel">${iAmPayer ? `<button class="delbtn" data-delsplit="${esc(sp.id)}" title="刪除" aria-label="刪除">✕</button>` : ''}</td>
     </tr>`;
   }).join('');
 
@@ -832,7 +833,7 @@ function drawSplits() {
     <div class="addbar"><button id="k-open" class="btn">＋ 記一筆拆帳</button></div>
     <div class="section-title" style="margin-top:8px">💰 結算(最少還款次數)</div>
     <div class="settle-box">${summaryHtml}</div>
-    <div class="tablewrap splitwrap"${SPLITS.length ? '' : ' hidden'} style="margin-top:12px">
+    <div class="tablewrap splitwrap"${SPLITS.length ? '' : ' hidden'}>
       <table class="tbl"><thead><tr><th>項目</th><th>付款人</th><th>台幣總額</th><th>分攤明細</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table>
     </div>

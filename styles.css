@@ -1,7 +1,7 @@
 :root{
   --bg:#eef6f1; --panel:#ffffff; --ink:#2c3b33; --muted:#6a7d72; --hint:#9aaaa0;
   --line:#6f9384; --shadow:#d2e7de; --green:#46c5a1; --green-d:#2f9e82; --green-l:#ddf4ec;
-  --gold:#f6cf63; --blue:#62b0e0; --rose:#e0728a; --brown:#a98d63;
+  --gold:#f6cf63; --blue:#62b0e0; --rose:#e0728a; --brown:#a98d63; --tint:#f4faf7;
   --px:"Press Start 2P",monospace; --cjk:"DotGothic16","Press Start 2P",monospace;
 }
 *{box-sizing:border-box}
@@ -308,7 +308,19 @@ table.grid input:focus,table.grid textarea:focus{outline:3px solid var(--gold);o
 .exptotal b{font-family:var(--px);font-size:14px;color:var(--green-d);margin-left:6px}
 .expchart-wrap{max-width:300px;margin:0 auto 18px}
 table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.ecat{font-size:11px;border:1px solid var(--line);padding:2px 8px;background:var(--green-l);color:var(--green-d);white-space:nowrap}
+/* 手機專用的「單價 × 數量 = 原幣」合併欄,桌機用原本的獨立欄位 */
+.ex-calc{display:none}
+/* 分類 chip */
+.ecat{display:inline-block;font-size:11px;border:2px solid var(--line);padding:1px 8px;background:var(--green-l);color:var(--green-d);white-space:nowrap;line-height:1.6}
+/* 來源徽章:此筆由拆帳同步而來 */
+.ecat-src{background:#fff;color:var(--muted);border-style:dashed}
+/* 狀態徽章:自己 / 未還 / 已還 */
+.ecat-state{background:#fff;color:var(--muted)}
+.ecat-state.is-done{background:var(--green-l);color:var(--green-d)}
+/* 刪除鈕(桌機):原本沒有任何樣式,會顯示成瀏覽器預設按鈕 */
+.tbl .rowdel{width:1%;white-space:nowrap}
+.tbl .rowdel .delbtn{border:0;background:none;color:var(--hint);cursor:pointer;font-size:14px;line-height:1;padding:4px 6px}
+.tbl .rowdel .delbtn:hover{color:var(--rose)}
 .expcats{max-width:340px;margin:0 auto 18px;display:flex;flex-direction:column;gap:6px}
 .expcat-row{display:flex;align-items:center;gap:8px;font-size:13px}
 .expcat-row .cdot{width:12px;height:12px;flex:0 0 auto;border:1px solid var(--line)}
@@ -337,8 +349,11 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .settle-row .settle-arrow{color:var(--green-d);font-family:var(--px);font-size:11px;flex:0 0 auto}
 .settle-row .settle-to{flex:1 1 auto}
 .settle-row .settle-amt{font-family:var(--px);font-size:13px;color:var(--green-d);font-variant-numeric:tabular-nums;flex:0 0 auto;margin-left:auto}
-.sp-line{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:2px 0;flex-wrap:wrap}
+.sp-line{display:flex;align-items:center;gap:6px 8px;font-size:12px;padding:3px 0;flex-wrap:wrap}
 .sp-line > span{min-width:0;overflow-wrap:anywhere}
+.sp-line .sp-who{flex:0 1 auto}
+.sp-line .sp-share{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--muted)}
+.sp-line .sp-settle,.sp-line .ecat-state{margin-left:auto}
 .sp-line .sp-settle{padding:2px 8px;font-size:11px;flex:0 0 auto}
 /* 收據:縮圖在「分攤明細」欄最底部(手機卡片版就等於整張卡的最下面) */
 .sp-pics{margin-top:8px}
@@ -346,58 +361,59 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:
 .sp-picbar{margin-top:8px}
 .sp-picbar .sp-pic-edit{padding:4px 10px;font-size:11px}
 
-/* --- 拆帳:手機改卡片式(桌機維持表格) --- */
+/* --- 拆帳 / 支出:手機改卡片式(桌機維持表格) ---
+   注意:清除格線必須用 .splitwrap table.tbl td (0,2,2),
+   才蓋得過 styles.css 的 table.tbl td (0,1,2)。 */
 @media(max-width:640px){
   .settle-row .settle-amt{flex:1 0 100%;text-align:right;margin-left:0}
-  /* 外框交給每張卡片自己畫 */
-  .splitwrap{background:none;border:0;box-shadow:none;overflow:visible;margin-bottom:76px}
-  .splitwrap table.tbl{min-width:0;width:100%;display:block;font-size:13px}
-  .splitwrap thead{display:none}
-  .splitwrap tbody{display:block}
-  .splitwrap tr{
-    display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;align-items:start;
+
+  /* 兩頁共用:外框交給每張卡片自己畫,格線與表格內距一律清除 */
+  .splitwrap,.expwrap{background:none;border:0;box-shadow:none;overflow:visible;margin-bottom:76px}
+  .splitwrap table.tbl,.expwrap table.tbl{min-width:0;width:100%;display:block;font-size:13px}
+  .splitwrap thead,.expwrap thead{display:none}
+  .splitwrap tbody,.expwrap tbody{display:block}
+  .splitwrap table.tbl td,.expwrap table.tbl td{
+    display:block;border:0;padding:0;min-width:0;text-align:left;vertical-align:baseline}
+  .splitwrap tr,.expwrap tr{
+    display:grid;column-gap:12px;align-items:start;
     background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);
-    padding:10px 12px;margin-bottom:12px}
-  .splitwrap td{display:block;border:0;padding:0;min-width:0}
-  .splitwrap .sp-item{grid-column:1;grid-row:1;font-size:14px;overflow-wrap:anywhere}
-  .splitwrap .rowdel{grid-column:2;grid-row:1;text-align:right}
-  .splitwrap .rowdel button{border:0;background:none;color:var(--hint);cursor:pointer;font-size:16px;padding:2px 4px;line-height:1}
-  .splitwrap .rowdel button:hover{color:var(--rose)}
-  .splitwrap .sp-payer-cell{grid-column:1;grid-row:2;align-self:center;color:var(--muted);font-size:12px;padding-top:4px}
-  .splitwrap .sp-total{grid-column:2;grid-row:2;align-self:center;padding-top:4px;
-    font-family:var(--px);font-size:13px;color:var(--green-d);text-align:right;white-space:nowrap}
-  .splitwrap .sp-detail{grid-column:1 / -1;grid-row:3;margin-top:8px;padding-top:8px;border-top:2px dashed var(--shadow)}
-  .splitwrap .sp-detail::before{content:attr(data-label);display:block;font-size:11px;color:var(--hint);margin-bottom:4px}
-  .splitwrap .sp-line{justify-content:flex-start;row-gap:4px}
-  .splitwrap .sp-line .sp-settle,.splitwrap .sp-line .ecat{margin-left:auto}
-  /* 手機的收據縮圖放大一點,比較好按 */
+    padding:12px 14px;margin-bottom:12px}
+  /* 第 2 欄用 auto 而非固定 24px:金額比 ✕ 寬時才不會溢出 */
+  .splitwrap tr{grid-template-columns:minmax(0,1fr) auto}
+  .expwrap tr{grid-template-columns:auto auto minmax(0,1fr) 24px}
+
+  /* 刪除鈕:固定右上角 24×24,無內容時該格自然留空 */
+  .splitwrap .rowdel,.expwrap .rowdel{grid-column:-2/-1;grid-row:1;justify-self:end;width:auto;min-width:24px}
+  .splitwrap .rowdel .delbtn,.expwrap .rowdel .delbtn{
+    display:flex;align-items:center;justify-content:center;width:24px;height:24px;
+    border:0;background:none;color:var(--hint);cursor:pointer;font-size:15px;line-height:1;
+    padding:0;margin:-2px -4px 0 0}
+  .splitwrap .rowdel .delbtn:hover,.expwrap .rowdel .delbtn:hover{color:var(--rose)}
+
+  /* ---- 拆帳卡片 ---- */
+  .splitwrap .sp-item{grid-column:1;grid-row:1;font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+  .splitwrap .sp-item .sp-sub{font-size:11px;color:var(--hint);margin-top:3px}
+  .splitwrap .sp-item .sp-sub:empty{display:none}
+  .splitwrap .sp-payer-cell{grid-column:1;grid-row:2;align-self:center;color:var(--muted);font-size:12px;padding-top:8px}
+  .splitwrap .sp-total{grid-column:2/-1;grid-row:2;align-self:center;padding-top:8px;
+    font-family:var(--px);font-size:15px;color:var(--green-d);text-align:right;white-space:nowrap}
+  .splitwrap .sp-detail{grid-column:1/-1;grid-row:3;margin-top:10px;background:var(--tint);padding:8px 10px}
+  .splitwrap .sp-detail::before{content:attr(data-label);display:block;font-size:11px;color:var(--hint);
+    letter-spacing:.04em;margin-bottom:4px}
+  .splitwrap .sp-line{row-gap:4px}
   .splitwrap .sp-pics .notepic{width:96px;height:72px}
   .splitwrap .sp-picbar .sp-pic-edit{padding:6px 12px;font-size:12px}
-}
 
-/* --- 支出:手機改卡片式(桌機維持表格) --- */
-@media(max-width:640px){
-  .expwrap{background:none;border:0;box-shadow:none;overflow:visible;margin-bottom:76px}
-  .expwrap table.tbl{min-width:0;width:100%;display:block;font-size:13px}
-  .expwrap thead{display:none}
-  .expwrap tbody{display:block}
-  .expwrap tr{
-    display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;
-    background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);
-    padding:10px 12px;margin-bottom:10px}
-  .expwrap td{display:block;border:0;padding:0;min-width:0;text-align:left}
-  /* 商品名幾乎佔滿第一行,刪除鈕跟著它,其餘欄位自然換到第二行 */
-  .expwrap .ex-name{order:1;flex:1 1 calc(100% - 44px);font-size:14px;overflow-wrap:anywhere}
-  .expwrap .rowdel{order:2;flex:0 0 auto;margin-left:auto}
-  .expwrap .rowdel button{border:0;background:none;color:var(--hint);cursor:pointer;font-size:16px;padding:2px 4px;line-height:1}
-  .expwrap .rowdel button:hover{color:var(--rose)}
-  .expwrap .ex-cat{order:3;flex:0 0 auto}
-  .expwrap .ex-qty,.expwrap .ex-price,.expwrap .ex-total{order:4;flex:0 0 auto;font-size:12px;color:var(--muted);white-space:nowrap}
-  .expwrap .ex-qty::before{content:'×'}
-  .expwrap .ex-price::before{content:'單價 '}
-  .expwrap .ex-total::before{content:'原幣 '}
-  .expwrap .ex-twd{order:5;flex:0 0 auto;margin-left:auto;
-    font-family:var(--px);font-size:13px;color:var(--green-d);white-space:nowrap}
+  /* ---- 支出卡片:第 1 列品名+刪除,第 2 列 分類 / 算式 / 台幣 ---- */
+  .expwrap .ex-name{grid-column:1/-2;grid-row:1;font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+  /* 需要 (0,2,3) 才蓋得過上面的 .expwrap table.tbl td{display:block} */
+  .expwrap table.tbl td.ex-qty,.expwrap table.tbl td.ex-price,.expwrap table.tbl td.ex-total{display:none}
+  .expwrap .ex-cat{grid-column:1;grid-row:2;align-self:center;margin-top:8px}
+  /* 算式可斷行:極長金額時寧可換行,也不要把台幣總額擠出卡片 */
+  .expwrap .ex-calc{grid-column:2;grid-row:2;align-self:center;margin-top:8px;min-width:0;
+    font-size:12px;color:var(--muted);white-space:normal;font-variant-numeric:tabular-nums}
+  .expwrap .ex-twd{grid-column:3/-1;grid-row:2;align-self:center;margin-top:8px;text-align:right;
+    font-family:var(--px);font-size:15px;color:var(--green-d);white-space:nowrap}
 }
 
 /* ---------- 購物清單 ---------- */
