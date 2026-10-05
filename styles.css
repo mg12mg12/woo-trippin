@@ -219,6 +219,38 @@ table.grid input:focus,table.grid textarea:focus{outline:3px solid var(--gold);o
 #wb-info{color:#f3e2c0;font-size:13px}
 @media(max-width:560px){.wb-row .wu,.wb-head .wu{width:56px}.wb-row .wd,.wb-head .wd{width:64px;font-size:10px}}
 
+/* 吉伊卡哇圖鑑(隱藏頁):仿原圖鑑——類型導覽列 + 角色圓圈(進度環)+ 分類卡片格 */
+.chiikawa-wrap{min-height:240px;margin:8px 0 26px}
+.ck-nav{position:sticky;top:58px;z-index:15;display:flex;gap:6px;overflow-x:auto;padding:8px 6px;margin:0 0 16px;background:var(--panel);border:2px solid var(--line);box-shadow:3px 3px 0 var(--shadow);scrollbar-width:thin}
+.ck-nav-i{flex:0 0 auto;font-family:var(--cjk);font-size:13px;background:none;border:0;color:var(--ink);padding:4px 10px;cursor:pointer}
+.ck-nav-i:hover{background:var(--green-l);color:var(--green-d)}
+.ck-tabs{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 10px;margin:4px 0 8px}
+.ck-tab{width:76px;display:flex;flex-direction:column;align-items:center;border:0;background:none;padding:0;cursor:pointer;font-family:var(--cjk)}
+.ck-ring{width:62px;height:62px;border-radius:50%;padding:4px;background:conic-gradient(var(--c,var(--green)) var(--p,0%),#e3ece7 0);display:flex;transition:background .3s}
+.ck-face{flex:1;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--ink);border:2px solid var(--panel)}
+.ck-tab:hover .ck-face{background:var(--tint)}
+.ck-tab.active .ck-face{border-color:var(--c,var(--green));background:var(--tint)}
+.ck-tn{font-size:12px;margin-top:4px;line-height:1.3}
+.ck-tab.active .ck-tn{color:var(--green-d);font-weight:bold}
+.ck-tc{font-size:10px;color:var(--muted);line-height:1.3}
+.ck-reset .ck-ring{background:var(--rose)}
+.ck-reset .ck-face{color:var(--rose)}
+.ck-status{text-align:center;margin:4px 0 14px;min-height:1.7em}
+.ck-sec{scroll-margin-top:118px;margin-bottom:22px}
+.ck-h{font-size:16px;color:var(--green-d);margin:0 0 8px}
+.ck-hc{font-size:13px;color:var(--muted)}
+.ck-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.ck-card{position:relative;display:flex;flex-direction:column;align-items:center;background:var(--panel);border:2px solid #cfd8d3;box-shadow:2px 2px 0 var(--shadow);padding:6px 4px 6px;cursor:pointer;font-family:var(--cjk);color:var(--ink);text-align:center;min-width:0}
+.ck-card img{width:100%;height:110px;object-fit:contain;image-rendering:auto}
+.ck-name{font-size:12px;line-height:1.35;margin-top:4px;font-weight:bold;overflow-wrap:anywhere}
+.ck-size{font-size:10px;color:var(--muted);line-height:1.3;min-height:1.3em}
+.ck-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:var(--c,var(--green));color:#fff;font-size:12px;line-height:20px;display:none}
+.ck-card.on{border-color:var(--c,var(--green));background:var(--tint)}
+.ck-card.on .ck-check{display:block}
+.ck-card:active{transform:translate(2px,2px);box-shadow:0 0 0 var(--shadow)}
+.ck-card:disabled{cursor:not-allowed;opacity:.6}
+@media(max-width:480px){.ck-grid{grid-template-columns:repeat(3,1fr)}.ck-card img{height:84px}.ck-tab{width:64px}.ck-ring{width:54px;height:54px}}
+
 /* 頁尾(風景剪影,山稜線當上緣,不是一直線)*/
 .footer{margin-top:56px}
 .footer-scene{line-height:0}

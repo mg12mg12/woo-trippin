@@ -87,6 +87,7 @@ function applyAvatar() {
 function refreshSideUser() {
   $('#side-name').textContent = (USER && USER.name) || (DEV ? '本機示範' : '未登入');
   $('#side-email').textContent = (USER && USER.email) || '';
+  $('#menu-chiikawa').hidden = !canSeeChiikawa();   // 隱藏頁:非指定帳號不顯示選單項目
   applyAvatar();
 }
 // ---- 掀頁動畫(corner fold):摺線從「頂邊 95% 寬」斜到「左邊 92% 高」(陡角度),
@@ -150,6 +151,8 @@ $('#side-close').onclick = closeSide;
 $('#side-mask').onclick = closeSide;
 $('#menu-home').onclick = () => { closeSide(); if (guardDirty()) { showLoading(); showHome(); hideLoading(); } };
 $('#menu-wish').onclick = () => { closeSide(); if (guardDirty()) { showWish(); } };  // showWish 會自行管理 loading(等圖載完)
+$('#menu-chiikawa').onclick = () => { closeSide(); if (guardDirty()) { showChiikawa(); } };
+$('#chiikawa-back').onclick = () => { showLoading(); showHome(); hideLoading(); };
 $('#wish-back').onclick = () => { showLoading(); showHome(); hideLoading(); };
 $('#wish-input').oninput = () => { $('#wish-btn').disabled = !$('#wish-input').value.trim() || WISH_BUSY; };
 $('#wish-btn').onclick = async () => {
@@ -242,7 +245,7 @@ async function saveSheetRemote(name, sheet) {
 function showHome() {
   setHash(null);
   stopFountain();
-  $('#trip-view').hidden = true; $('#wish-view').hidden = true; $('#home-view').hidden = false;
+  $('#trip-view').hidden = true; $('#wish-view').hidden = true; $('#chiikawa-view').hidden = true; $('#home-view').hidden = false;
   const trips = homeTrips();
   const items = trips.map((t, i) => {
     const th = THEMES[i % THEMES.length];
@@ -345,6 +348,7 @@ function parseHash() {
 async function restoreFromHash() {
   const h = parseHash();
   if (h.p === 'wish') { showWish(); return; }
+  if (h.p === 'chiikawa' && canSeeChiikawa()) { showChiikawa(); return; }   // 沒權限就落到首頁
   if (h.t && homeTrips().some(t => t.id === h.t)) { await openTrip(h.t, h.s); return; }
   showHome();
 }
@@ -502,7 +506,7 @@ function floatWishText() {
 }
 async function showWish() {
   try { history.replaceState(null, '', '#p=wish'); } catch (e) {}
-  $('#home-view').hidden = true; $('#trip-view').hidden = true; $('#wish-view').hidden = false;
+  $('#home-view').hidden = true; $('#trip-view').hidden = true; $('#chiikawa-view').hidden = true; $('#wish-view').hidden = false;
   window.scrollTo(0, 0);
   showLoading();
   try { await preloadWishAssets(); }           // 等噴泉/小狗/投幣三張圖都載入解碼完
@@ -510,18 +514,144 @@ async function showWish() {
   loadWishBoard();                              // 看板資料另外載入,不擋動畫
 }
 
+// ---------- 吉伊卡哇圖鑑(隱藏頁:只有 CHIIKAWA_VIEWERS 的登入者看得到選單項目)----------
+const CHIIKAWA_VIEWERS = ['a20819z@gmail.com'];   // 要加人就往這裡加(小寫)
+const canSeeChiikawa = () => DEV || CHIIKAWA_VIEWERS.indexOf(((USER && USER.email) || '').toLowerCase()) !== -1;
+function showChiikawa() {
+  if (!canSeeChiikawa()) { showHome(); return; }
+  try { history.replaceState(null, '', '#p=chiikawa'); } catch (e) {}
+  stopFountain();
+  $('#home-view').hidden = true; $('#trip-view').hidden = true; $('#wish-view').hidden = true; $('#chiikawa-view').hidden = false;
+  window.scrollTo(0, 0);
+  loadChiikawa().then(renderChiikawa)
+    .catch(e => { $('#chiikawa-body').innerHTML = '<p class="muted">讀取圖鑑失敗:' + esc(e.message) + '</p>'; });
+}
+// 圖鑑資料:存在第一個行程試算表的「圖鑑」工作表,後端只回傳給 CHIIKAWA_VIEWERS;讀一次就留在記憶體
+let CHIIKAWA_DATA = null;   // { headers, rows }
+let CK_ITEMS = [];          // 轉成物件的商品列表(勾選時直接改 got)
+async function loadChiikawa(force) {
+  if (CHIIKAWA_DATA && !force) return CHIIKAWA_DATA;
+  if (DEV) {   // 本機示範:放幾筆假資料試版面(真資料只放在雲端試算表,不進 git)
+    CHIIKAWA_DATA = { headers: ['編號', '分頁', '角色', '類型', '名稱', '貨號', '圖片', '網址', '尺寸', '日韓名', '備註', '已收集'],
+      rows: [['1', '吉伊', '吉伊', '吊娃', '基礎小腳', '', '', '', '110x90x55', '', '', 'V'], ['2', '吉伊', '吉伊', '吊娃', '樂園迷你', '', '', '', '90x70x50', '', '', ''],
+        ['3', '吉伊', '吉伊', '娃', '小腳S娃', '', '', '', '200x150x100', '', '', ''], ['4', '小八', '小八', '吊娃', '基礎小腳', '', '', '', '110x90x55', '', '', ''],
+        ['5', '其他角色', '甲蟲', '', '基礎', '', '', '', '80x70x50', '', '', '']] };
+  } else {
+    showLoading();
+    try { CHIIKAWA_DATA = await apiPost('chiikawa', { spreadsheetId: wishSid() }); }
+    finally { hideLoading(); }
+  }
+  const h = CHIIKAWA_DATA.headers || [], at = (r, n) => { const i = h.indexOf(n); return i === -1 ? '' : (r[i] || ''); };
+  CK_ITEMS = (CHIIKAWA_DATA.rows || []).map((r, i) => ({
+    i, no: at(r, '編號'), tab: at(r, '分頁') || at(r, '角色') || '未分類', role: at(r, '角色'), type: at(r, '類型'),
+    name: at(r, '名稱'), img: at(r, '圖片'), size: at(r, '尺寸'), got: ckOn(at(r, '已收集')) }));
+  return CHIIKAWA_DATA;
+}
+
+// ---------- 圖鑑畫面(仿原圖鑑:角色圓圈 + 類型導覽列 + 分類卡片格;點卡片切換已收集)----------
+const CK_TABS = ['吉伊', '小八', '兔兔', '小桃', '師傅', '栗子', '獅薩', '古本', '其他角色'];
+const CK_LABEL = { 吉伊: '吉', 小八: '八', 兔兔: '兔', 小桃: '桃', 師傅: '師', 栗子: '栗', 獅薩: '獅', 古本: '古', 其他角色: '★' };
+const CK_COLOR = { 吉伊: '#f2a7b8', 小八: '#7aa9d9', 兔兔: '#e8c46a', 小桃: '#b9a6e0', 師傅: '#c9a27a', 栗子: '#d8a35d', 獅薩: '#e0b04a', 古本: '#e59aa6', 其他角色: '#8fc7a6' };
+const CK_DEFAULT_IMG = 'image/demo.png';   // 沒填圖片時的預設圖
+const ckOn = (v) => !!String(v || '').trim() && !/^(false|0|n|no|否)$/i.test(String(v).trim());
+let CK_TAB = (() => { try { return LS.getItem('ckTab') || '吉伊'; } catch (e) { return '吉伊'; } })();
+const ckTabs = () => CK_TABS.concat([...new Set(CK_ITEMS.map(x => x.tab))].filter(t => CK_TABS.indexOf(t) === -1));
+const ckGroup = (x) => x.type || x.role || '未分類';   // 「其他角色」沒有類型,改用角色分組(跟原圖鑑一樣)
+const ckCount = (list) => `${list.filter(x => x.got).length}/${list.length}`;
+
+function renderChiikawa() {
+  const tabs = ckTabs();
+  if (tabs.indexOf(CK_TAB) === -1) CK_TAB = tabs[0];
+  const color = CK_COLOR[CK_TAB] || 'var(--green)';
+  const mine = CK_ITEMS.filter(x => x.tab === CK_TAB);
+  const groups = [];
+  mine.forEach(x => { const g = ckGroup(x); let o = groups.find(z => z.name === g); if (!o) groups.push(o = { name: g, list: [] }); o.list.push(x); });
+
+  const tabHtml = tabs.map(t => {
+    const list = CK_ITEMS.filter(x => x.tab === t), pct = list.length ? list.filter(x => x.got).length / list.length * 100 : 0;
+    return `<button class="ck-tab${t === CK_TAB ? ' active' : ''}" data-tab="${esc(t)}">
+      <span class="ck-ring" style="--c:${CK_COLOR[t] || 'var(--green)'};--p:${pct.toFixed(1)}%"><span class="ck-face">${esc(CK_LABEL[t] || t.slice(0, 1))}</span></span>
+      <span class="ck-tn">${esc(t)}</span><span class="ck-tc" data-tc="${esc(t)}">${ckCount(list)}</span></button>`;
+  }).join('') + `<button class="ck-tab ck-reset" id="ck-reset"><span class="ck-ring"><span class="ck-face">↺</span></span><span class="ck-tn">重置圖鑑</span><span class="ck-tc">${esc(CK_TAB)}</span></button>`;
+
+  const navHtml = groups.map((g, k) => `<button class="ck-nav-i" data-go="${k}">${esc(g.name)}</button>`).join('');
+  const secHtml = groups.map((g, k) => `<section class="ck-sec" id="ck-sec-${k}">
+      <div class="ck-h">${esc(g.name)} <span class="ck-hc" data-gc="${k}">(${ckCount(g.list)})</span></div>
+      <div class="ck-grid">${g.list.map(x => `<button class="ck-card${x.got ? ' on' : ''}" data-i="${x.i}" data-g="${k}"${x.no ? '' : ' disabled title="缺少編號,無法記錄收集"'}>
+        <span class="ck-check" aria-hidden="true">✔</span>
+        <img src="${esc(x.img || CK_DEFAULT_IMG)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${CK_DEFAULT_IMG}'">
+        <span class="ck-name">${esc(x.name || '(未命名)')}</span><span class="ck-size">${esc(x.size)}</span></button>`).join('')}</div>
+    </section>`).join('');
+
+  $('#chiikawa-body').innerHTML = `
+    <nav class="ck-nav">${navHtml}</nav>
+    <div class="ck-tabs">${tabHtml}</div>
+    <p class="ck-status muted small" id="ck-status">點卡片就能標記已收集,會自動存回試算表</p>
+    <div class="ck-secs" style="--c:${color}">${secHtml || '<p class="muted">這個角色還沒有資料</p>'}</div>`;
+}
+function ckRefreshCounts() {   // 勾選後只更新數字與圓圈進度,不整頁重畫
+  ckTabs().forEach(t => {
+    const list = CK_ITEMS.filter(x => x.tab === t), el = document.querySelector(`[data-tc="${CSS.escape(t)}"]`);
+    if (el) { el.textContent = ckCount(list); el.parentNode.querySelector('.ck-ring').style.setProperty('--p', (list.length ? list.filter(x => x.got).length / list.length * 100 : 0).toFixed(1) + '%'); }
+  });
+  document.querySelectorAll('.ck-sec').forEach(sec => {
+    const cards = [...sec.querySelectorAll('.ck-card')], el = sec.querySelector('.ck-hc');
+    if (el) el.textContent = `(${cards.filter(c => c.classList.contains('on')).length}/${cards.length})`;
+  });
+}
+
+// 勾選先改畫面,0.8 秒內的連續點擊合併成一次寫回;失敗就還原
+let CK_PENDING = {}, CK_TIMER = null, CK_SAVING = 0;
+function ckSetStatus(t) { const el = $('#ck-status'); if (el) el.textContent = t; }
+function ckQueue(x) { CK_PENDING[x.no] = x.got; clearTimeout(CK_TIMER); CK_TIMER = setTimeout(ckFlush, 800); ckSetStatus('儲存中…'); }
+async function ckFlush() {
+  clearTimeout(CK_TIMER); CK_TIMER = null;
+  const batch = CK_PENDING; CK_PENDING = {};
+  const items = Object.keys(batch).map(no => ({ no, got: batch[no] }));
+  if (!items.length) return;
+  CK_SAVING++;
+  try {
+    if (!DEV) await apiPost('chiikawaCollect', { spreadsheetId: wishSid(), items });
+    if (CK_SAVING === 1 && !CK_TIMER) ckSetStatus('已儲存 ✔');   // 最後一批存完才顯示
+  } catch (e) {
+    items.forEach(it => CK_ITEMS.filter(x => x.no === it.no).forEach(x => { x.got = !it.got; }));   // 還原
+    if (!$('#chiikawa-view').hidden) renderChiikawa();
+    ckSetStatus('儲存失敗,已還原:' + e.message);
+  } finally { CK_SAVING--; }
+}
+window.addEventListener('beforeunload', (e) => { if (CK_TIMER || CK_SAVING) { ckFlush(); e.preventDefault(); e.returnValue = ''; } });
+
+$('#chiikawa-body').addEventListener('click', (e) => {
+  const tab = e.target.closest('.ck-tab[data-tab]');
+  if (tab) { CK_TAB = tab.dataset.tab; try { LS.setItem('ckTab', CK_TAB); } catch (er) {} renderChiikawa(); return; }
+  if (e.target.closest('#ck-reset')) {
+    const list = CK_ITEMS.filter(x => x.tab === CK_TAB && x.got && x.no);
+    if (!list.length || !confirm(`確定把「${CK_TAB}」的 ${list.length} 筆收集紀錄全部清空?`)) return;
+    list.forEach(x => { x.got = false; CK_PENDING[x.no] = false; });
+    renderChiikawa(); ckSetStatus('儲存中…'); ckFlush(); return;
+  }
+  const go = e.target.closest('.ck-nav-i');
+  if (go) { const sec = $('#ck-sec-' + go.dataset.go); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+  const card = e.target.closest('.ck-card');
+  if (card && !card.disabled) {
+    const x = CK_ITEMS[+card.dataset.i]; if (!x) return;
+    x.got = !x.got; card.classList.toggle('on', x.got);
+    ckRefreshCounts(); ckQueue(x);
+  }
+});
+
 // ---------- 開啟行程 ----------
 async function openTrip(id, wantSheet) {
   if (parseHash().go === 'ticket') PENDING_TICKET_SCROLL = true;   // 先記下,稍後 setHash 會把 go 清掉
   const meta = homeTrips().find(t => t.id === id); if (!meta) { showHome(); return; }
   try { TRIP = await loadTrip(meta); } catch (e) { alert('讀取失敗:' + e.message); showHome(); return; }
   stopFountain();
-  $('#home-view').hidden = true; $('#wish-view').hidden = true; $('#trip-view').hidden = false;
+  $('#home-view').hidden = true; $('#wish-view').hidden = true; $('#chiikawa-view').hidden = true; $('#trip-view').hidden = false;
   $('#trip-head').innerHTML = `<span class="tn">${esc(TRIP.name)}</span>
     <span class="troute">${esc(TRIP.origin || '')} ✈ ${esc(TRIP.dest || '')}</span>
     <span class="tm">${esc(TRIP.dateRange || '')} · ${esc(TRIP.days || '')} 天</span>`;
   renderMap();
-  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '拆帳' && n !== '購物清單' && n !== '願望清單' && n !== '旅遊筆記' && n !== '行李清單');
+  const names = Object.keys(TRIP.sheets || {}).filter(n => n !== '支出' && n !== '拆帳' && n !== '購物清單' && n !== '願望清單' && n !== '旅遊筆記' && n !== '行李清單' && n !== '圖鑑' && n !== '選單' && n !== '說明');
   let tabsHtml = names.map((n, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" data-s="${esc(n)}"><span class="ic">${ICONS[n] || '•'}</span><span class="lab">${esc(n)}</span></button>`).join('');
   tabsHtml += `<button class="tab" data-s="__exp__"><span class="ic">💵</span><span class="lab">支出</span></button>`;
