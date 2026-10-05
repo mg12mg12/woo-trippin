@@ -523,12 +523,20 @@ function showChiikawa() {
   stopFountain();
   $('#home-view').hidden = true; $('#trip-view').hidden = true; $('#wish-view').hidden = true; $('#chiikawa-view').hidden = false;
   window.scrollTo(0, 0);
+  CK_EDIT = false;
   loadChiikawa().then(renderChiikawa)
     .catch(e => { $('#chiikawa-body').innerHTML = '<p class="muted">讀取圖鑑失敗:' + esc(e.message) + '</p>'; });
 }
 // 圖鑑資料:存在第一個行程試算表的「圖鑑」工作表,後端只回傳給 CHIIKAWA_VIEWERS;讀一次就留在記憶體
 let CHIIKAWA_DATA = null;   // { headers, rows }
-let CK_ITEMS = [];          // 轉成物件的商品列表(勾選時直接改 got)
+let CK_ITEMS = [];          // 每筆商品 { i, r(原始列), no, tab, role, type, name, img, size, got }
+const ckGet = (r, n) => { const i = (CHIIKAWA_DATA.headers || []).indexOf(n); return i === -1 ? '' : (r[i] || ''); };
+function ckFill(x) {   // 由原始列算出畫面要用的欄位
+  const r = x.r;
+  Object.assign(x, { no: ckGet(r, '編號'), tab: ckGet(r, '分頁') || ckGet(r, '角色') || '未分類', role: ckGet(r, '角色'), type: ckGet(r, '類型'),
+    name: ckGet(r, '名稱'), img: ckGet(r, '圖片'), size: ckGet(r, '尺寸'), got: ckOn(ckGet(r, '已收集')) });
+  return x;
+}
 async function loadChiikawa(force) {
   if (CHIIKAWA_DATA && !force) return CHIIKAWA_DATA;
   if (DEV) {   // 本機示範:放幾筆假資料試版面(真資料只放在雲端試算表,不進 git)
@@ -541,22 +549,22 @@ async function loadChiikawa(force) {
     try { CHIIKAWA_DATA = await apiPost('chiikawa', { spreadsheetId: wishSid() }); }
     finally { hideLoading(); }
   }
-  const h = CHIIKAWA_DATA.headers || [], at = (r, n) => { const i = h.indexOf(n); return i === -1 ? '' : (r[i] || ''); };
-  CK_ITEMS = (CHIIKAWA_DATA.rows || []).map((r, i) => ({
-    i, no: at(r, '編號'), tab: at(r, '分頁') || at(r, '角色') || '未分類', role: at(r, '角色'), type: at(r, '類型'),
-    name: at(r, '名稱'), img: at(r, '圖片'), size: at(r, '尺寸'), got: ckOn(at(r, '已收集')) }));
+  CK_ITEMS = (CHIIKAWA_DATA.rows || []).map((r, i) => ckFill({ i, r }));
   return CHIIKAWA_DATA;
 }
 
-// ---------- 圖鑑畫面(仿原圖鑑:角色圓圈 + 類型導覽列 + 分類卡片格;點卡片切換已收集)----------
+// ---------- 圖鑑畫面(仿原圖鑑:類型導覽列 + 角色圓圈 + 分類卡片格)----------
+// 平常只能看;按右上「✎ 修改」進入編輯模式,才能點卡片切換已收集、點 ✎ 改資料。各分類標題右邊的 ＋ 隨時可新增商品。
 const CK_TABS = ['吉伊', '小八', '兔兔', '小桃', '師傅', '栗子', '獅薩', '古本', '其他角色'];
 const CK_LABEL = { 吉伊: '吉', 小八: '八', 兔兔: '兔', 小桃: '桃', 師傅: '師', 栗子: '栗', 獅薩: '獅', 古本: '古', 其他角色: '★' };
 const CK_COLOR = { 吉伊: '#f2a7b8', 小八: '#7aa9d9', 兔兔: '#e8c46a', 小桃: '#b9a6e0', 師傅: '#c9a27a', 栗子: '#d8a35d', 獅薩: '#e0b04a', 古本: '#e59aa6', 其他角色: '#8fc7a6' };
 const CK_DEFAULT_IMG = 'image/demo.png';   // 沒填圖片時的預設圖
 const ckOn = (v) => !!String(v || '').trim() && !/^(false|0|n|no|否)$/i.test(String(v).trim());
 let CK_TAB = (() => { try { return LS.getItem('ckTab') || '吉伊'; } catch (e) { return '吉伊'; } })();
+let CK_EDIT = false;   // 編輯模式(切換角色就自動關閉)
 const ckTabs = () => CK_TABS.concat([...new Set(CK_ITEMS.map(x => x.tab))].filter(t => CK_TABS.indexOf(t) === -1));
-const ckGroup = (x) => x.type || x.role || '未分類';   // 「其他角色」沒有類型,改用角色分組(跟原圖鑑一樣)
+const ckIsOther = (tab) => tab === '其他角色';
+const ckGroup = (x) => (ckIsOther(x.tab) ? x.role : x.type) || x.type || x.role || '未分類';   // 「其他角色」沒有類型,用角色分組
 const ckCount = (list) => `${list.filter(x => x.got).length}/${list.length}`;
 
 function renderChiikawa() {
@@ -572,28 +580,41 @@ function renderChiikawa() {
     return `<button class="ck-tab${t === CK_TAB ? ' active' : ''}" data-tab="${esc(t)}">
       <span class="ck-ring" style="--c:${CK_COLOR[t] || 'var(--green)'};--p:${pct.toFixed(1)}%"><span class="ck-face">${esc(CK_LABEL[t] || t.slice(0, 1))}</span></span>
       <span class="ck-tn">${esc(t)}</span><span class="ck-tc" data-tc="${esc(t)}">${ckCount(list)}</span></button>`;
-  }).join('') + `<button class="ck-tab ck-reset" id="ck-reset"><span class="ck-ring"><span class="ck-face">↺</span></span><span class="ck-tn">重置圖鑑</span><span class="ck-tc">${esc(CK_TAB)}</span></button>`;
+  }).join('');
 
   const navHtml = groups.map((g, k) => `<button class="ck-nav-i" data-go="${k}">${esc(g.name)}</button>`).join('');
   const secHtml = groups.map((g, k) => `<section class="ck-sec" id="ck-sec-${k}">
-      <div class="ck-h">${esc(g.name)} <span class="ck-hc" data-gc="${k}">(${ckCount(g.list)})</span></div>
-      <div class="ck-grid">${g.list.map(x => `<button class="ck-card${x.got ? ' on' : ''}" data-i="${x.i}" data-g="${k}"${x.no ? '' : ' disabled title="缺少編號,無法記錄收集"'}>
-        <span class="ck-check" aria-hidden="true">✔</span>
-        <img src="${esc(x.img || CK_DEFAULT_IMG)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${CK_DEFAULT_IMG}'">
-        <span class="ck-name">${esc(x.name || '(未命名)')}</span><span class="ck-size">${esc(x.size)}</span></button>`).join('')}</div>
+      <div class="ck-h"><span>${esc(g.name)} <span class="ck-hc">(${ckCount(g.list)})</span></span>
+        <button class="ck-add" data-add="${esc(g.name)}" title="在「${esc(g.name)}」新增商品" aria-label="新增商品">＋</button></div>
+      <div class="ck-grid">${g.list.map(ckCardHtml).join('')}</div>
     </section>`).join('');
 
   $('#chiikawa-body').innerHTML = `
     <nav class="ck-nav">${navHtml}</nav>
     <div class="ck-tabs">${tabHtml}</div>
-    <p class="ck-status muted small" id="ck-status">點卡片就能標記已收集,會自動存回試算表</p>
-    <div class="ck-secs" style="--c:${color}">${secHtml || '<p class="muted">這個角色還沒有資料</p>'}</div>`;
+    <div class="ck-bar${CK_EDIT ? ' editing' : ''}">
+      <span class="ck-bar-t">${esc(CK_TAB)} <span class="ck-hc" data-tc-bar>(${ckCount(mine)})</span></span>
+      <span class="ck-bar-r">
+        ${CK_EDIT ? '<button class="btn-ghost ck-reset" id="ck-reset">↺ 清空收集</button>' : ''}
+        <button class="btn ck-edit" id="ck-edit">${CK_EDIT ? '✔ 完成' : '✎ 修改'}</button>
+      </span>
+    </div>
+    <p class="ck-status muted small" id="ck-status">${CK_EDIT ? '編輯中:點卡片切換已收集,點 ✎ 修改商品資料' : '按「✎ 修改」後才能勾選已收集、編輯商品'}</p>
+    <div class="ck-secs${CK_EDIT ? ' editing' : ''}" style="--c:${color}">${secHtml || `<p class="muted">這個角色還沒有資料 <button class="ck-add" data-add="" aria-label="新增商品">＋</button></p>`}</div>`;
+}
+function ckCardHtml(x) {
+  return `<div class="ck-card${x.got ? ' on' : ''}${x.no ? '' : ' nono'}" data-i="${x.i}" role="button" tabindex="0"${x.no ? '' : ' title="缺少編號,無法記錄收集"'}>
+    <span class="ck-check" aria-hidden="true">✔</span>
+    ${x.no ? `<button class="ck-pen" data-pen="${x.i}" title="修改商品資料" aria-label="修改商品資料">✎</button>` : ''}
+    <img src="${esc(x.img || CK_DEFAULT_IMG)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${CK_DEFAULT_IMG}'">
+    <span class="ck-name">${esc(x.name || '(未命名)')}</span><span class="ck-size">${esc(x.size)}</span></div>`;
 }
 function ckRefreshCounts() {   // 勾選後只更新數字與圓圈進度,不整頁重畫
   ckTabs().forEach(t => {
     const list = CK_ITEMS.filter(x => x.tab === t), el = document.querySelector(`[data-tc="${CSS.escape(t)}"]`);
     if (el) { el.textContent = ckCount(list); el.parentNode.querySelector('.ck-ring').style.setProperty('--p', (list.length ? list.filter(x => x.got).length / list.length * 100 : 0).toFixed(1) + '%'); }
   });
+  const bar = document.querySelector('[data-tc-bar]'); if (bar) bar.textContent = `(${ckCount(CK_ITEMS.filter(x => x.tab === CK_TAB))})`;
   document.querySelectorAll('.ck-sec').forEach(sec => {
     const cards = [...sec.querySelectorAll('.ck-card')], el = sec.querySelector('.ck-hc');
     if (el) el.textContent = `(${cards.filter(c => c.classList.contains('on')).length}/${cards.length})`;
@@ -604,6 +625,7 @@ function ckRefreshCounts() {   // 勾選後只更新數字與圓圈進度,不整
 let CK_PENDING = {}, CK_TIMER = null, CK_SAVING = 0;
 function ckSetStatus(t) { const el = $('#ck-status'); if (el) el.textContent = t; }
 function ckQueue(x) { CK_PENDING[x.no] = x.got; clearTimeout(CK_TIMER); CK_TIMER = setTimeout(ckFlush, 800); ckSetStatus('儲存中…'); }
+function ckSetGot(x, got) { x.got = got; const i = CHIIKAWA_DATA.headers.indexOf('已收集'); if (i !== -1) x.r[i] = got ? 'V' : ''; }
 async function ckFlush() {
   clearTimeout(CK_TIMER); CK_TIMER = null;
   const batch = CK_PENDING; CK_PENDING = {};
@@ -614,30 +636,110 @@ async function ckFlush() {
     if (!DEV) await apiPost('chiikawaCollect', { spreadsheetId: wishSid(), items });
     if (CK_SAVING === 1 && !CK_TIMER) ckSetStatus('已儲存 ✔');   // 最後一批存完才顯示
   } catch (e) {
-    items.forEach(it => CK_ITEMS.filter(x => x.no === it.no).forEach(x => { x.got = !it.got; }));   // 還原
+    items.forEach(it => CK_ITEMS.filter(x => x.no === it.no).forEach(x => ckSetGot(x, !it.got)));   // 還原
     if (!$('#chiikawa-view').hidden) renderChiikawa();
     ckSetStatus('儲存失敗,已還原:' + e.message);
   } finally { CK_SAVING--; }
 }
 window.addEventListener('beforeunload', (e) => { if (CK_TIMER || CK_SAVING) { ckFlush(); e.preventDefault(); e.returnValue = ''; } });
 
+// ---------- 新增 / 修改商品(共用同一個表單)----------
+function ckOpenForm(x, group) {
+  const isNew = !x, tab = isNew ? CK_TAB : x.tab, other = ckIsOther(tab);
+  const v = (n) => isNew ? '' : ckGet(x.r, n);
+  const groupField = other ? '角色' : '類型';
+  const groupVal = isNew ? (group || '') : v(groupField);
+  const opts = [...new Set(CK_ITEMS.filter(z => z.tab === tab).map(z => other ? z.role : z.type).filter(Boolean))];
+  const ov = document.createElement('div');
+  ov.className = 'nmodal ck-modal';
+  ov.innerHTML = `
+    <div class="nmodal-card">
+      <div class="nmodal-title">${isNew ? '＋ 新增商品' : '✎ 修改商品'} — ${esc(tab)}${isNew ? '' : ` <span class="muted small">#${esc(x.no)}</span>`}</div>
+      <div class="nmodal-sec">${groupField}</div>
+      <input id="ckf-group" list="ckf-groups" value="${esc(groupVal)}" placeholder="例:${esc(opts[0] || '吊娃')}"/>
+      <datalist id="ckf-groups">${opts.map(o => `<option value="${esc(o)}">`).join('')}</datalist>
+      <div class="nmodal-sec">名稱 <span class="muted small">(必填)</span></div>
+      <input id="ckf-name" maxlength="100" value="${esc(v('名稱'))}"/>
+      <div class="ck-form-row">
+        <div><div class="nmodal-sec">貨號</div><input id="ckf-code" maxlength="60" value="${esc(v('貨號'))}"/></div>
+        <div><div class="nmodal-sec">尺寸</div><input id="ckf-size" maxlength="60" value="${esc(v('尺寸'))}" placeholder="110x90x55"/></div>
+      </div>
+      <div class="nmodal-sec">圖片網址 <span class="muted small">(留空顯示預設圖)</span></div>
+      <div class="ck-form-img"><img id="ckf-prev" src="${esc(v('圖片') || CK_DEFAULT_IMG)}" alt="" onerror="this.src='${CK_DEFAULT_IMG}'"/><input id="ckf-img" value="${esc(v('圖片'))}" placeholder="https://…"/></div>
+      <div class="nmodal-sec">商品網址</div>
+      <input id="ckf-url" value="${esc(v('網址'))}" placeholder="https://…"/>
+      <div class="nmodal-sec">日韓名</div>
+      <input id="ckf-jp" maxlength="200" value="${esc(v('日韓名'))}"/>
+      <div class="nmodal-sec">備註</div>
+      <input id="ckf-note" maxlength="300" value="${esc(v('備註'))}"/>
+      <div class="nmodal-btns">
+        <button id="ckf-cancel" class="btn-ghost">取消</button>
+        <button id="ckf-save" class="btn">${isNew ? '＋ 新增' : '儲存'}</button>
+      </div>
+      <p id="ckf-status" class="muted small" hidden></p>
+    </div>`;
+  document.body.appendChild(ov);
+  const q = (s) => ov.querySelector(s);
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  q('#ckf-cancel').onclick = () => ov.remove();
+  q('#ckf-img').oninput = () => { q('#ckf-prev').src = q('#ckf-img').value.trim() || CK_DEFAULT_IMG; };
+  q('#ckf-name').focus();
+  q('#ckf-save').onclick = async () => {
+    const st = q('#ckf-status');
+    const item = { 名稱: q('#ckf-name').value.trim(), 貨號: q('#ckf-code').value.trim(), 尺寸: q('#ckf-size').value.trim(),
+      圖片: q('#ckf-img').value.trim(), 網址: q('#ckf-url').value.trim(), 日韓名: q('#ckf-jp').value.trim(), 備註: q('#ckf-note').value.trim() };
+    item[groupField] = q('#ckf-group').value.trim();
+    if (!item.名稱) { st.hidden = false; st.textContent = '請填寫名稱'; q('#ckf-name').focus(); return; }
+    if (isNew) { item.分頁 = tab; if (!other) item.角色 = tab; }
+    q('#ckf-save').disabled = true; st.hidden = false; st.textContent = '儲存中…';
+    try {
+      let row;
+      if (DEV) {   // 本機示範:只改記憶體
+        const h = CHIIKAWA_DATA.headers;
+        row = isNew ? h.map(n => n === '編號' ? String(Math.max(0, ...CK_ITEMS.map(z => +z.no || 0)) + 1) : (item[n] || '')) : x.r.map((c, j) => item[h[j]] !== undefined ? item[h[j]] : c);
+      } else {
+        row = (await apiPost(isNew ? 'chiikawaAdd' : 'chiikawaUpdate', isNew ? { spreadsheetId: wishSid(), item } : { spreadsheetId: wishSid(), no: x.no, item })).row;
+      }
+      ckSyncHeaders(row);
+      if (isNew) { const n = { i: CK_ITEMS.length, r: row }; CHIIKAWA_DATA.rows.push(row); CK_ITEMS.push(ckFill(n)); }
+      else { x.r = row; CHIIKAWA_DATA.rows[x.i] = row; ckFill(x); }
+      ov.remove();
+      renderChiikawa();
+      ckSetStatus(isNew ? `已新增「${item.名稱}」✔` : `已更新「${item.名稱}」✔`);
+    } catch (e) {
+      q('#ckf-save').disabled = false; st.textContent = '儲存失敗:' + e.message;
+    }
+  };
+}
+function ckSyncHeaders(row) {   // 後端回傳的列可能比前端多一欄(例如剛自動補上「已收集」)
+  while (CHIIKAWA_DATA.headers.length < row.length) CHIIKAWA_DATA.headers.push('');
+}
+
 $('#chiikawa-body').addEventListener('click', (e) => {
   const tab = e.target.closest('.ck-tab[data-tab]');
-  if (tab) { CK_TAB = tab.dataset.tab; try { LS.setItem('ckTab', CK_TAB); } catch (er) {} renderChiikawa(); return; }
+  if (tab) { if (tab.dataset.tab !== CK_TAB) CK_EDIT = false; CK_TAB = tab.dataset.tab; try { LS.setItem('ckTab', CK_TAB); } catch (er) {} renderChiikawa(); return; }
+  if (e.target.closest('#ck-edit')) { if (CK_EDIT && (CK_TIMER || Object.keys(CK_PENDING).length)) ckFlush(); CK_EDIT = !CK_EDIT; renderChiikawa(); return; }
   if (e.target.closest('#ck-reset')) {
     const list = CK_ITEMS.filter(x => x.tab === CK_TAB && x.got && x.no);
     if (!list.length || !confirm(`確定把「${CK_TAB}」的 ${list.length} 筆收集紀錄全部清空?`)) return;
-    list.forEach(x => { x.got = false; CK_PENDING[x.no] = false; });
+    list.forEach(x => { ckSetGot(x, false); CK_PENDING[x.no] = false; });
     renderChiikawa(); ckSetStatus('儲存中…'); ckFlush(); return;
   }
+  const add = e.target.closest('.ck-add');
+  if (add) { ckOpenForm(null, add.dataset.add); return; }
   const go = e.target.closest('.ck-nav-i');
   if (go) { const sec = $('#ck-sec-' + go.dataset.go); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+  const pen = e.target.closest('.ck-pen');
+  if (pen) { if (CK_EDIT) ckOpenForm(CK_ITEMS[+pen.dataset.pen]); return; }
   const card = e.target.closest('.ck-card');
-  if (card && !card.disabled) {
+  if (card && CK_EDIT && !card.classList.contains('nono')) {
     const x = CK_ITEMS[+card.dataset.i]; if (!x) return;
-    x.got = !x.got; card.classList.toggle('on', x.got);
+    ckSetGot(x, !x.got); card.classList.toggle('on', x.got);
     ckRefreshCounts(); ckQueue(x);
   }
+});
+$('#chiikawa-body').addEventListener('keydown', (e) => {   // 卡片改成 div 後,鍵盤 Enter/空白鍵也能切換
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('ck-card')) { e.preventDefault(); e.target.click(); }
 });
 
 // ---------- 開啟行程 ----------
