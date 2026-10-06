@@ -739,18 +739,37 @@ async function ckExportPdf() {
   if (!total) { ckSetStatus(`「${CK_TAB}」沒有${ckFilterLabel()}的項目可以匯出`); return; }
   const d = new Date(), pad = (n) => String(n).padStart(2, '0');
   const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const card = (x) => `<div class="ckp-card${x.got ? ' on' : ''}">${x.got ? '<span class="ckp-check">✔</span>' : ''}
-      <img src="${esc(x.img || CK_DEFAULT_IMG)}" alt="" onerror="this.onerror=null;this.src='${CK_DEFAULT_IMG}'">
-      <span class="ckp-name">${esc(x.name || '(未命名)')}</span><span class="ckp-size">${esc(x.size)}</span></div>`;
+  const pct = (list) => list.length ? Math.round(list.filter(x => x.got).length / list.length * 100) : 0;
+  const color = CK_COLOR[CK_TAB] || '#46c5a1';
+  // 卡片:左上方框(已收集打勾、未收集留空可手寫打勾)、圖、名稱、尺寸
+  const card = (x) => `<div class="ckp-card${x.got ? ' on' : ''}"><span class="ckp-box">${x.got ? '✔' : ''}</span>
+      <div class="ckp-img"><img src="${esc(x.img || CK_DEFAULT_IMG)}" alt="" onerror="this.onerror=null;this.src='${CK_DEFAULT_IMG}'"></div>
+      <div class="ckp-name">${esc(x.name || '(未命名)')}</div>${x.size ? `<div class="ckp-size">${esc(x.size)}</div>` : ''}</div>`;
   let box = $('#ck-print'); if (box) box.remove();
   box = document.createElement('div');
   box.id = 'ck-print';
-  box.style.setProperty('--c', CK_COLOR[CK_TAB] || 'var(--green)');
-  box.innerHTML = `<div class="ckp-head"><div class="ckp-title">📖 吉伊卡哇圖鑑 — ${esc(CK_TAB)}</div>
-      <div class="ckp-meta">篩選:${esc(ckFilterLabel())} · ${total} 項 · 收集進度 ${ckCount(mine)} · ${today}</div></div>
-    ${groups.map(g => `<section class="ckp-sec"><div class="ckp-h">${esc(g.name)} <span class="ckp-hc">(${ckCount(g.list)})</span></div>
+  box.style.setProperty('--c', color);
+  box.innerHTML = `<header class="ckp-head">
+      <div class="ckp-badge">${esc(CK_LABEL[CK_TAB] || CK_TAB.slice(0, 1))}</div>
+      <div class="ckp-hd"><div class="ckp-kicker">吉伊卡哇圖鑑</div><div class="ckp-title">${esc(CK_TAB)}</div>
+        <div class="ckp-meta"><span>篩選:${esc(ckFilterLabel())}</span><span>本份 ${total} 項</span><span>${today}</span></div></div>
+      <div class="ckp-prog"><div class="ckp-pct">${pct(mine)}<small>%</small></div>
+        <div class="ckp-bar"><i style="width:${pct(mine)}%"></i></div><div class="ckp-pn">已收集 ${ckCount(mine)}</div></div>
+    </header>
+    ${groups.map(g => `<section class="ckp-sec"><div class="ckp-h"><span class="ckp-hn">${esc(g.name)}</span>
+        <span class="ckp-hbar"><i style="width:${pct(g.list)}%"></i></span><span class="ckp-hc">${ckCount(g.list)}</span></div>
       <div class="ckp-grid">${g.shown.map(card).join('')}</div></section>`).join('')}`;
   document.body.appendChild(box);
+  // 頁首/頁碼用 @page 邊界區塊(Chrome 131+ / Edge 131+;不支援的瀏覽器會忽略)
+  let pg = $('#ck-print-page'); if (pg) pg.remove();
+  pg = document.createElement('style');
+  pg.id = 'ck-print-page';
+  const cssStr = (t) => '"' + String(t).replace(/["\\]/g, '\\$&') + '"';
+  pg.textContent = `@media print{@page{size:A4;margin:14mm 11mm 13mm;
+    @top-left{content:${cssStr('吉伊卡哇圖鑑 · ' + CK_TAB + ' · ' + ckFilterLabel())};font:9px sans-serif;color:#999}
+    @top-right{content:${cssStr(today)};font:9px sans-serif;color:#999}
+    @bottom-center{content:counter(page) " / " counter(pages);font:9px sans-serif;color:#999}}}`;
+  document.head.appendChild(pg);
   ckSetStatus('準備匯出中…');
   // 等圖片載入完(最多 8 秒)才開列印視窗,避免 PDF 出現空白圖
   await Promise.race([
@@ -759,9 +778,9 @@ async function ckExportPdf() {
   const oldTitle = document.title;
   document.title = `吉伊卡哇圖鑑_${CK_TAB}_${ckFilterLabel()}_${today}`;   // 多數瀏覽器用這個當預設檔名
   document.body.classList.add('ck-printing');
-  const done = () => { document.body.classList.remove('ck-printing'); document.title = oldTitle; box.remove(); window.removeEventListener('afterprint', done); };
+  const done = () => { document.body.classList.remove('ck-printing'); document.title = oldTitle; box.remove(); pg.remove(); window.removeEventListener('afterprint', done); };
   window.addEventListener('afterprint', done);
-  ckSetStatus('在列印視窗選「另存為 PDF」即可儲存');
+  ckSetStatus('在列印視窗選「另存為 PDF」即可儲存(若出現網址/日期,把「頁首和頁尾」取消勾選)');
   window.print();
   setTimeout(() => { if (!window.matchMedia('print').matches && document.body.classList.contains('ck-printing')) done(); }, 1500);   // 部分手機瀏覽器不觸發 afterprint
 }
