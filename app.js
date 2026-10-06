@@ -562,6 +562,16 @@ const CK_DEFAULT_IMG = 'image/demo.png';   // 沒填圖片時的預設圖
 const ckOn = (v) => !!String(v || '').trim() && !/^(false|0|n|no|否)$/i.test(String(v).trim());
 let CK_TAB = (() => { try { return LS.getItem('ckTab') || '吉伊'; } catch (e) { return '吉伊'; } })();
 let CK_EDIT = false;   // 編輯模式(切換角色就自動關閉)
+// 篩選:all=全部 / got=已收集 / miss=未收集(記在本機,下次開啟沿用)
+const CK_FILTERS = [['all', '全部'], ['got', '已收集'], ['miss', '未收集']];
+let CK_FILTER = (() => { try { const v = LS.getItem('ckFilter'); return CK_FILTERS.some(f => f[0] === v) ? v : 'all'; } catch (e) { return 'all'; } })();
+const ckPass = (x) => CK_FILTER === 'all' || (CK_FILTER === 'got' ? x.got : !x.got);
+const ckFilterLabel = () => (CK_FILTERS.find(f => f[0] === CK_FILTER) || CK_FILTERS[0])[1];
+function ckGroups(list) {   // 依類型(其他角色依角色)分組,保留原始順序
+  const groups = [];
+  list.forEach(x => { const g = ckGroup(x); let o = groups.find(z => z.name === g); if (!o) groups.push(o = { name: g, list: [] }); o.list.push(x); });
+  return groups;
+}
 const ckTabs = () => CK_TABS.concat([...new Set(CK_ITEMS.map(x => x.tab))].filter(t => CK_TABS.indexOf(t) === -1));
 const ckIsOther = (tab) => tab === '其他角色';
 const ckGroup = (x) => (ckIsOther(x.tab) ? x.role : x.type) || x.type || x.role || '未分類';   // 「其他角色」沒有類型,用角色分組
@@ -572,8 +582,8 @@ function renderChiikawa() {
   if (tabs.indexOf(CK_TAB) === -1) CK_TAB = tabs[0];
   const color = CK_COLOR[CK_TAB] || 'var(--green)';
   const mine = CK_ITEMS.filter(x => x.tab === CK_TAB);
-  const groups = [];
-  mine.forEach(x => { const g = ckGroup(x); let o = groups.find(z => z.name === g); if (!o) groups.push(o = { name: g, list: [] }); o.list.push(x); });
+  // 分組用完整清單(計數不受篩選影響),卡片只顯示符合篩選的;篩選後沒卡片的分類整段隱藏
+  const groups = ckGroups(mine).map(g => Object.assign(g, { shown: g.list.filter(ckPass) })).filter(g => CK_FILTER === 'all' || g.shown.length);
 
   const tabHtml = tabs.map(t => {
     const list = CK_ITEMS.filter(x => x.tab === t), pct = list.length ? list.filter(x => x.got).length / list.length * 100 : 0;
@@ -583,10 +593,10 @@ function renderChiikawa() {
   }).join('');
 
   const navHtml = groups.map((g, k) => `<button class="ck-nav-i" data-go="${k}">${esc(g.name)}</button>`).join('');
-  const secHtml = groups.map((g, k) => `<section class="ck-sec" id="ck-sec-${k}">
+  const secHtml = groups.map((g, k) => `<section class="ck-sec" id="ck-sec-${k}" data-g="${esc(g.name)}">
       <div class="ck-h"><span>${esc(g.name)} <span class="ck-hc">(${ckCount(g.list)})</span></span>
         <button class="ck-add" data-add="${esc(g.name)}" title="在「${esc(g.name)}」新增商品" aria-label="新增商品">＋</button></div>
-      <div class="ck-grid">${g.list.map(ckCardHtml).join('')}</div>
+      <div class="ck-grid">${g.shown.map(ckCardHtml).join('')}</div>
     </section>`).join('');
 
   $('#chiikawa-body').innerHTML = `
@@ -599,8 +609,14 @@ function renderChiikawa() {
         <button class="btn ck-edit" id="ck-edit">${CK_EDIT ? '✔ 完成' : '✎ 修改'}</button>
       </span>
     </div>
+    <div class="ck-filter">
+      <span class="ck-seg" role="group" aria-label="篩選">${CK_FILTERS.map(([k, t]) => `<button class="ck-f${k === CK_FILTER ? ' active' : ''}" data-filter="${k}" aria-pressed="${k === CK_FILTER}">${t}</button>`).join('')}</span>
+      <button class="btn-ghost ck-pdf" id="ck-pdf" title="把目前角色、目前篩選的內容匯出成 PDF">🖨 匯出 PDF</button>
+    </div>
     <p class="ck-status muted small" id="ck-status">${CK_EDIT ? '編輯中:點卡片切換已收集,點 ✎ 修改商品資料' : '按「✎ 修改」後才能勾選已收集、編輯商品'}</p>
-    <div class="ck-secs${CK_EDIT ? ' editing' : ''}" style="--c:${color}">${secHtml || `<p class="muted">這個角色還沒有資料 <button class="ck-add" data-add="" aria-label="新增商品">＋</button></p>`}</div>`;
+    <div class="ck-secs${CK_EDIT ? ' editing' : ''}" style="--c:${color}">${secHtml || (mine.length
+      ? `<p class="muted">「${esc(CK_TAB)}」沒有${esc(ckFilterLabel())}的項目</p>`
+      : `<p class="muted">這個角色還沒有資料 <button class="ck-add" data-add="" aria-label="新增商品">＋</button></p>`)}</div>`;
 }
 function ckCardHtml(x) {
   return `<div class="ck-card${x.got ? ' on' : ''}${x.no ? '' : ' nono'}" data-i="${x.i}" role="button" tabindex="0"${x.no ? '' : ' title="缺少編號,無法記錄收集"'}>
@@ -615,9 +631,9 @@ function ckRefreshCounts() {   // 勾選後只更新數字與圓圈進度,不整
     if (el) { el.textContent = ckCount(list); el.parentNode.querySelector('.ck-ring').style.setProperty('--p', (list.length ? list.filter(x => x.got).length / list.length * 100 : 0).toFixed(1) + '%'); }
   });
   const bar = document.querySelector('[data-tc-bar]'); if (bar) bar.textContent = `(${ckCount(CK_ITEMS.filter(x => x.tab === CK_TAB))})`;
-  document.querySelectorAll('.ck-sec').forEach(sec => {
-    const cards = [...sec.querySelectorAll('.ck-card')], el = sec.querySelector('.ck-hc');
-    if (el) el.textContent = `(${cards.filter(c => c.classList.contains('on')).length}/${cards.length})`;
+  document.querySelectorAll('.ck-sec[data-g]').forEach(sec => {   // 用資料算(畫面上可能只有篩選後的卡片)
+    const el = sec.querySelector('.ck-hc');
+    if (el) el.textContent = `(${ckCount(CK_ITEMS.filter(x => x.tab === CK_TAB && ckGroup(x) === sec.dataset.g))})`;
   });
 }
 
@@ -715,9 +731,47 @@ function ckSyncHeaders(row) {   // 後端回傳的列可能比前端多一欄(�
   while (CHIIKAWA_DATA.headers.length < row.length) CHIIKAWA_DATA.headers.push('');
 }
 
+// ---------- 匯出 PDF:只印目前角色 + 目前篩選的內容,用瀏覽器列印「另存為 PDF」----------
+async function ckExportPdf() {
+  const mine = CK_ITEMS.filter(x => x.tab === CK_TAB);
+  const groups = ckGroups(mine).map(g => Object.assign(g, { shown: g.list.filter(ckPass) })).filter(g => g.shown.length);
+  const total = groups.reduce((n, g) => n + g.shown.length, 0);
+  if (!total) { ckSetStatus(`「${CK_TAB}」沒有${ckFilterLabel()}的項目可以匯出`); return; }
+  const d = new Date(), pad = (n) => String(n).padStart(2, '0');
+  const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const card = (x) => `<div class="ckp-card${x.got ? ' on' : ''}">${x.got ? '<span class="ckp-check">✔</span>' : ''}
+      <img src="${esc(x.img || CK_DEFAULT_IMG)}" alt="" onerror="this.onerror=null;this.src='${CK_DEFAULT_IMG}'">
+      <span class="ckp-name">${esc(x.name || '(未命名)')}</span><span class="ckp-size">${esc(x.size)}</span></div>`;
+  let box = $('#ck-print'); if (box) box.remove();
+  box = document.createElement('div');
+  box.id = 'ck-print';
+  box.style.setProperty('--c', CK_COLOR[CK_TAB] || 'var(--green)');
+  box.innerHTML = `<div class="ckp-head"><div class="ckp-title">📖 吉伊卡哇圖鑑 — ${esc(CK_TAB)}</div>
+      <div class="ckp-meta">篩選:${esc(ckFilterLabel())} · ${total} 項 · 收集進度 ${ckCount(mine)} · ${today}</div></div>
+    ${groups.map(g => `<section class="ckp-sec"><div class="ckp-h">${esc(g.name)} <span class="ckp-hc">(${ckCount(g.list)})</span></div>
+      <div class="ckp-grid">${g.shown.map(card).join('')}</div></section>`).join('')}`;
+  document.body.appendChild(box);
+  ckSetStatus('準備匯出中…');
+  // 等圖片載入完(最多 8 秒)才開列印視窗,避免 PDF 出現空白圖
+  await Promise.race([
+    Promise.all([...box.querySelectorAll('img')].map(img => img.complete ? 0 : new Promise(r => { img.onload = img.onerror = r; }))),
+    new Promise(r => setTimeout(r, 8000))]);
+  const oldTitle = document.title;
+  document.title = `吉伊卡哇圖鑑_${CK_TAB}_${ckFilterLabel()}_${today}`;   // 多數瀏覽器用這個當預設檔名
+  document.body.classList.add('ck-printing');
+  const done = () => { document.body.classList.remove('ck-printing'); document.title = oldTitle; box.remove(); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  ckSetStatus('在列印視窗選「另存為 PDF」即可儲存');
+  window.print();
+  setTimeout(() => { if (!window.matchMedia('print').matches && document.body.classList.contains('ck-printing')) done(); }, 1500);   // 部分手機瀏覽器不觸發 afterprint
+}
+
 $('#chiikawa-body').addEventListener('click', (e) => {
   const tab = e.target.closest('.ck-tab[data-tab]');
   if (tab) { if (tab.dataset.tab !== CK_TAB) CK_EDIT = false; CK_TAB = tab.dataset.tab; try { LS.setItem('ckTab', CK_TAB); } catch (er) {} renderChiikawa(); return; }
+  const f = e.target.closest('.ck-f[data-filter]');
+  if (f) { if (CK_TIMER || Object.keys(CK_PENDING).length) ckFlush(); CK_FILTER = f.dataset.filter; try { LS.setItem('ckFilter', CK_FILTER); } catch (er) {} renderChiikawa(); return; }
+  if (e.target.closest('#ck-pdf')) { ckExportPdf(); return; }
   if (e.target.closest('#ck-edit')) { if (CK_EDIT && (CK_TIMER || Object.keys(CK_PENDING).length)) ckFlush(); CK_EDIT = !CK_EDIT; renderChiikawa(); return; }
   if (e.target.closest('#ck-reset')) {
     const list = CK_ITEMS.filter(x => x.tab === CK_TAB && x.got && x.no);
